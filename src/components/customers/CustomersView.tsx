@@ -285,7 +285,7 @@ export const CustomersView: React.FC = () => {
     }
   };
 
-  const handleSendWhatsAppReminder = (customer: Customer) => {
+  const handleSendWhatsAppReminder = async (customer: Customer) => {
     if (!customer.phone) {
       notify('تنبيه', 'لا يوجد رقم هاتف مسجل لهذا العميل', 'warning');
       return;
@@ -297,10 +297,23 @@ export const CustomersView: React.FC = () => {
       return;
     }
 
-    const msg = buildDebtPeriodicReminderMessage(customer, settings, language);
-    const success = sendWhatsAppDebtMessage(customer.phone, msg);
+    const msg = buildDebtPeriodicReminderMessage({
+      storeSettings: settings,
+      customer
+    });
+    const res = await sendWhatsAppDebtMessage({
+      phone: customer.phone,
+      message: msg,
+      customerName: customer.name,
+      customerId: customer.id,
+      amountDue: currentDebt,
+      totalDebt: currentDebt,
+      currencySymbol: settings.currency.symbol,
+      type: 'manual_reminder',
+      storeSettings: settings
+    });
 
-    if (success) {
+    if (res.success) {
       soundEffects.playSuccess();
       notify('تم الفتح', `تم تجهيز رسالة التذكير بالدين للعميل ${customer.name} عبر واتساب`, 'success');
     } else {

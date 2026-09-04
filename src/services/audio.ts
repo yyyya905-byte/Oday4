@@ -141,6 +141,10 @@ class SoundService {
     this.playSuccess();
   }
 
+  public playCash() {
+    this.playSuccess();
+  }
+
   public buttonClick() {
     this.playClick();
   }

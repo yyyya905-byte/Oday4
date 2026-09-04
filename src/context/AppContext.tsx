@@ -324,6 +324,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return str;
   };
 
+  // Active View & Modal State
+  const [activeTab, setActiveTab] = useState<ActiveTab>('pos');
+  const [isOnline, setIsOnline] = useState<boolean>(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
+  const [isQuickSaleOpen, setIsQuickSaleOpen] = useState<boolean>(false);
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState<boolean>(false);
+  const [isPinModalOpen, setIsPinModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
   // 2. Business Operating Mode (Restaurant / Wholesale / Retail)
   const [businessMode, setBusinessModeState] = useState<BusinessMode>(() => {
     const saved = localStorage.getItem(STORAGE_KEYS.BUSINESS_MODE);
