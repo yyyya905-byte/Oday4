@@ -79,3 +79,77 @@
     display: none !important;
   }
 }
+
+/* =========================================================
+   Responsive Layout Media Queries & Viewport Sizing
+   Ensures seamless fit on Mobile, Tablets, Laptops & POS Screens
+   ========================================================= */
+
+/* Root Viewport Isolation */
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Fluid responsive sidebar on laptops and standard desktops */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .app-sidebar {
+    width: 13.5rem !important; /* 216px provides comfortable room for POS and tables */
+  }
+}
+
+@media (min-width: 1280px) and (max-width: 1535px) {
+  .app-sidebar {
+    width: 15rem !important; /* 240px */
+  }
+}
+
+@media (min-width: 1536px) {
+  .app-sidebar {
+    width: 16.5rem !important; /* 264px */
+  }
+}
+
+/* Short height screens (POS terminals, netbooks, laptops 1366x768, landscape tablets) */
+@media (max-height: 768px) {
+  .app-header {
+    height: 3.25rem !important; /* 52px */
+  }
+}
+
+/* Content area containment to prevent layout blowout */
+.app-content-wrapper {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.app-main-viewport {
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  position: relative;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Mobile & Tablet spacing adjustments to prevent bottom navigation overlap */
+@media (max-width: 1023px) {
+  .app-main-viewport {
+    padding-bottom: calc(4.25rem + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* Safe-area insets for modern mobile devices (iOS Home Bar / Android Navigation) */
+.app-bottom-nav {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@media (max-width: 640px) {
+  .app-bottom-nav {
+    height: calc(3.75rem + env(safe-area-inset-bottom, 0px)) !important;
+  }
+}

@@ -80,12 +80,12 @@ const AppContent: React.FC = () => {
       <Sidebar />
 
       {/* Main Content Area */}
-      <div className="flex flex-col flex-1 h-full min-w-0 overflow-hidden">
+      <div className="app-content-wrapper flex flex-col flex-1 h-full min-w-0 overflow-hidden">
         {/* Top App Header */}
         <Header />
 
         {/* Dynamic View Body */}
-        <main className="flex-1 flex overflow-hidden relative">
+        <main className="app-main-viewport flex-1 flex overflow-hidden relative">
           {renderActiveView()}
         </main>
 

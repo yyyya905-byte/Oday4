@@ -127,7 +127,7 @@ export const BottomNav: React.FC = () => {
       )}
 
       {/* Main bottom navigation bar */}
-      <nav className="lg:hidden fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 z-40 px-2 flex items-center justify-around shadow-lg">
+      <nav className="app-bottom-nav lg:hidden fixed bottom-0 left-0 right-0 h-16 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 z-40 px-2 flex items-center justify-around shadow-lg">
         {mainTabs.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;

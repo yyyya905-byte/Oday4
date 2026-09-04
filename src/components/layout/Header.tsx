@@ -83,7 +83,7 @@ export const Header: React.FC = () => {
 
   return (
     <>
-    <header className="h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 flex items-center justify-between sticky top-0 z-30 shadow-xs transition-colors">
+    <header className="app-header h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-4 flex items-center justify-between sticky top-0 z-30 shadow-xs transition-colors">
       {/* Left / Start Section: Brand & Quick POS Action */}
       <div className="flex items-center gap-3">
         <div 

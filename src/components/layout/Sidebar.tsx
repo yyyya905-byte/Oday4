@@ -165,7 +165,7 @@ export const Sidebar: React.FC = () => {
   ];
 
   return (
-    <aside className="hidden lg:flex flex-col w-64 bg-white dark:bg-slate-900 border-e border-slate-200 dark:border-slate-800 shrink-0 select-none z-20 transition-colors">
+    <aside className="app-sidebar hidden lg:flex flex-col w-64 bg-white dark:bg-slate-900 border-e border-slate-200 dark:border-slate-800 shrink-0 select-none z-20 transition-colors">
       {/* Brand Header */}
       <div className="p-4 border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
