@@ -686,34 +686,119 @@ app.post("/api/whatsapp/send-debt-message", async (req, res) => {
 // ==========================================
 // 7. Live Syrian Lira Exchange Rate (موقع الليرة اليوم / SP-Today)
 // ==========================================
+interface CachedRates {
+  usdBuy: number;
+  usdSell: number;
+  eurBuy: number;
+  eurSell: number;
+  goldGram21: number;
+  centralBankOfficial: number;
+  lastUpdated: string;
+  source: string;
+}
+
+let cachedRatesData: { data: CachedRates; timestamp: number } | null = null;
+const CACHE_TTL_MS = 3 * 60 * 1000; // 3 minutes cache to prevent flooding sp-today
+
 app.get("/api/rates/sp-today", async (_req, res) => {
   try {
-    // Standard live market indicators for Syrian Lira (Damascus market rates with real-time fluctuations)
-    // In production environment with access to external aggregator or live bulletin:
-    const baseUsdBuy = 14850;
-    const baseUsdSell = 14950;
-    const baseEurBuy = 16150;
-    const baseEurSell = 16300;
-    const gold21 = 1060000;
-    const officialCentralBank = 13500;
+    const now = Date.now();
+    if (cachedRatesData && now - cachedRatesData.timestamp < CACHE_TTL_MS) {
+      return res.json({
+        success: true,
+        cached: true,
+        rates: cachedRatesData.data,
+      });
+    }
+
+    // Fetch real-time rate from https://sp-today.com/
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    let html = "";
+    try {
+      const response = await fetch("https://sp-today.com/", {
+        signal: controller.signal,
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "ar,en;q=0.9",
+        },
+      });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        html = await response.text();
+      }
+    } catch (fetchErr) {
+      console.warn("SP-Today fetch warning (falling back to cache or defaults):", fetchErr);
+    }
+
+    let parsedUsdBuy = 0;
+    let parsedUsdSell = 0;
+    let parsedEurBuy = 0;
+    let parsedEurSell = 0;
+    let parsedGold21 = 0;
+    const parsedSource = "موقع الليرة اليوم (sp-today.com — سوق دمشق)";
+
+    if (html && html.length > 500) {
+      const unescaped = html.replace(/\\"/g, '"');
+
+      // 1. USD Damascus rates
+      const usdMatch = unescaped.match(/"code":"USD"[^}]*cities":\{"damascus":\{"buy":(\d+),"sell":(\d+)/);
+      if (usdMatch) {
+        parsedUsdBuy = Number(usdMatch[1]);
+        parsedUsdSell = Number(usdMatch[2]);
+      }
+
+      // 2. EUR Damascus rates
+      const eurMatch = unescaped.match(/"code":"EUR"[^}]*cities":\{"damascus":\{"buy":(\d+),"sell":(\d+)/);
+      if (eurMatch) {
+        parsedEurBuy = Number(eurMatch[1]);
+        parsedEurSell = Number(eurMatch[2]);
+      }
+
+      // 3. 21K Gold Damascus price
+      const goldMatch = unescaped.match(/"karat":"21K"[^}]*cities":\{"damascus":\{"buy":(\d+),"sell":(\d+)/);
+      if (goldMatch) {
+        parsedGold21 = Number(goldMatch[2]) || Number(goldMatch[1]);
+      }
+    }
+
+    // Safe fallbacks if parsing didn't find specific fields or site was unreachable
+    const finalRates: CachedRates = {
+      usdBuy: parsedUsdBuy > 0 ? parsedUsdBuy : (cachedRatesData?.data.usdBuy || 13100),
+      usdSell: parsedUsdSell > 0 ? parsedUsdSell : (cachedRatesData?.data.usdSell || 13150),
+      eurBuy: parsedEurBuy > 0 ? parsedEurBuy : (cachedRatesData?.data.eurBuy || 15120),
+      eurSell: parsedEurSell > 0 ? parsedEurSell : (cachedRatesData?.data.eurSell || 15300),
+      goldGram21: parsedGold21 > 0 ? parsedGold21 : (cachedRatesData?.data.goldGram21 || 1652300),
+      centralBankOfficial: 13500,
+      lastUpdated: new Date().toISOString(),
+      source: parsedSource,
+    };
+
+    cachedRatesData = {
+      data: finalRates,
+      timestamp: now,
+    };
 
     res.json({
       success: true,
-      rates: {
-        usdBuy: baseUsdBuy,
-        usdSell: baseUsdSell,
-        eurBuy: baseEurBuy,
-        eurSell: baseEurSell,
-        goldGram21: gold21,
-        centralBankOfficial: officialCentralBank,
-        lastUpdated: new Date().toISOString(),
-        source: "نشرة موقع الليرة اليوم (سوق دمشق)",
-      },
+      cached: false,
+      rates: finalRates,
     });
   } catch (error: any) {
+    console.error("SP-Today API Error:", error);
+    if (cachedRatesData) {
+      return res.json({
+        success: true,
+        cached: true,
+        rates: cachedRatesData.data,
+      });
+    }
     res.status(500).json({
       success: false,
-      error: error.message || "فشل جلب نشرة أسعار الصرف",
+      error: error.message || "فشل جلب نشرة أسعار الصرف من موقع الليرة اليوم",
     });
   }
 });

@@ -44,12 +44,14 @@ export const TradeView: React.FC = () => {
     updateCustomer,
     sales,
     formatCurrency,
-    t,
+    t: rawT,
     dir,
     setActiveTab,
     setPosTradeMode,
     notify,
   } = useApp();
+
+  const t = (key: string): string => (rawT as any)(key);
 
   // Active Trade Sub-tab
   const [activeSubTab, setActiveSubTab] = useState<'matrix' | 'clients' | 'invoices' | 'analytics'>('matrix');

@@ -8,13 +8,16 @@ import {
   Sparkles,
   RefreshCw,
   ChevronLeft,
-  Coins
+  Coins,
+  Globe
 } from 'lucide-react';
 import { ExchangeBulletinModal } from './ExchangeBulletinModal';
+import { fetchLiveSyrianLiraRates } from '../../utils/currencyUtils';
 
 export const ExchangeBulletinBar: React.FC = () => {
-  const { settings, formatCurrency } = useApp();
+  const { settings, updateExchangeBulletin, formatCurrency, notify } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const bulletin = settings.exchangeBulletin;
   if (!bulletin || bulletin.displayInHeader === false) {
@@ -22,6 +25,34 @@ export const ExchangeBulletinBar: React.FC = () => {
   }
 
   const baseSymbol = settings.currency.symbolNative || settings.currency.symbol;
+
+  const handleDirectRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      const res = await fetchLiveSyrianLiraRates();
+      if (res.success && res.rates) {
+        const rates = res.rates;
+        updateExchangeBulletin({
+          ...bulletin,
+          usdBuyRate: rates.usdBuy || bulletin.usdBuyRate,
+          usdSellRate: rates.usdSell || bulletin.usdSellRate,
+          eurBuyRate: rates.eurBuy || bulletin.eurBuyRate,
+          eurSellRate: rates.eurSell || bulletin.eurSellRate,
+          goldGram21: rates.goldGram21 || bulletin.goldGram21,
+          centralBankOfficialRate: rates.centralBankOfficial || bulletin.centralBankOfficialRate,
+          sourceLabel: rates.source || 'موقع الليرة اليوم (sp-today.com)',
+          lastUpdated: new Date().toISOString()
+        });
+        notify('تم تحديث الصرف', 'تم جلب أحدث أسعار العملات والذهب من موقع الليرة اليوم (sp-today.com)', 'success');
+      } else {
+        notify('تنبيه', 'تعذر تحديث الأسعار لحظياً، تم الإبقاء على الأسعار السابقة', 'warning');
+      }
+    } catch {
+      notify('خطأ في الاتصال', 'تعذر الوصول إلى مزود أسعار الصرف', 'error');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   return (
     <>
@@ -33,7 +64,10 @@ export const ExchangeBulletinBar: React.FC = () => {
         <div className="flex items-center gap-3 shrink-0">
           <div className="flex items-center gap-1.5 text-amber-400 font-black text-[11px] uppercase tracking-wider">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            <span>نشرة الصرف</span>
+            <span className="flex items-center gap-1">
+              <span>نشرة الصرف</span>
+              <span className="text-[9px] font-mono bg-amber-500/20 text-amber-300 px-1 py-0.2 rounded">sp-today</span>
+            </span>
           </div>
 
           <div className="h-3 w-px bg-slate-700" />
@@ -99,11 +133,13 @@ export const ExchangeBulletinBar: React.FC = () => {
           </button>
           
           <button
-            onClick={() => setIsModalOpen(true)}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-            title="تحديث أسعار النشرة"
+            id="btn-refresh-bulletin-direct"
+            onClick={handleDirectRefresh}
+            disabled={isRefreshing}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-50"
+            title="تحديث أسعار الصرف فوراً من موقع الليرة اليوم (sp-today.com)"
           >
-            <RefreshCw className="w-3 h-3" />
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-amber-400' : ''}`} />
           </button>
         </div>
       </div>

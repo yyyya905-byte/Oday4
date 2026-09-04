@@ -175,7 +175,13 @@ export const ProductsView: React.FC = () => {
   const handleAddCategory = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatNameAr.trim()) return;
-    addCategory(newCatNameAr, newCatNameEn || newCatNameAr);
+    addCategory({
+      nameAr: newCatNameAr.trim(),
+      nameEn: (newCatNameEn || newCatNameAr).trim(),
+      color: '#f59e0b',
+      icon: 'tag',
+      sortOrder: categories.length + 1,
+    });
     setNewCatNameAr('');
     setNewCatNameEn('');
     notify('تم بنجاح', 'تمت إضافة التصنيف الجديد', 'success');

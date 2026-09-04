@@ -81,6 +81,7 @@ export const StaffView: React.FC = () => {
         pinCode,
         email,
         phone,
+        active: true,
       });
       notify('تم بنجاح', `تم إضافة الموظف الجديد ${name}`, 'success');
     }

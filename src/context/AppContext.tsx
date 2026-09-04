@@ -70,7 +70,7 @@ interface AppContextType {
   // Localization & Theme
   language: Language;
   setLanguage: (lang: Language) => void;
-  t: (key: keyof typeof translations['ar'], params?: Record<string, string | number>) => string;
+  t: (key: (keyof typeof translations['ar']) | (string & {}), params?: Record<string, string | number>) => string;
   dir: 'rtl' | 'ltr';
   theme: 'light' | 'dark';
   themeMode: ThemeMode;
@@ -314,8 +314,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
   }, [language]);
 
-  const t = (key: keyof typeof translations['ar'], params?: Record<string, string | number>): string => {
-    let str = translations[language][key] || translations['ar'][key] || key;
+  const t = (key: (keyof typeof translations['ar']) | (string & {}), params?: Record<string, string | number>): string => {
+    let str = (translations[language] as any)?.[key] || (translations['ar'] as any)?.[key] || key;
     if (params) {
       Object.entries(params).forEach(([pKey, pVal]) => {
         str = str.replace(`{${pKey}}`, String(pVal));
@@ -478,7 +478,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Manual fast toggle (toggles between light and dark)
   const toggleTheme = () => {
-    const next = theme === 'light' ? 'dark' : 'light';
+    const next: ThemeMode = theme === 'light' ? 'dark' : 'light';
     setTheme(next);
     setThemeModeState(next);
     localStorage.setItem(STORAGE_KEYS.THEME, next);
@@ -2257,8 +2257,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         totalWholesaleValue: roundVal(m.totalWholesaleValue),
         items: m.items.map(it => ({
           ...it,
-          wholesalePrice: roundVal(it.wholesalePrice),
-          lineTotal: roundVal(it.lineTotal)
+          wholesaleUnitPrice: roundVal(it.wholesaleUnitPrice),
+          totalWholesaleValue: roundVal(it.totalWholesaleValue)
         }))
       }));
       setVehicleManifestsState(updatedManifests);

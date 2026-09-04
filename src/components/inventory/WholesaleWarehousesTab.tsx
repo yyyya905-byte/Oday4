@@ -110,9 +110,11 @@ export const WholesaleWarehousesTab: React.FC = () => {
         type: whType,
         location: whLocation.trim(),
         managerName: whManager.trim(),
+        phone: whPhone.trim(),
         managerPhone: whPhone.trim(),
         capacity: whCapacity.trim(),
-        isActive: true,
+        active: true,
+        isMainWholesale: false,
       });
     }
 
@@ -142,13 +144,24 @@ export const WholesaleWarehousesTab: React.FC = () => {
       return;
     }
 
-    transferWarehouseStock(
-      transferFromId,
-      transferToId,
-      transferProductId,
-      transferQuantity,
-      transferNotes || 'تحويل مخزني بين مستودعات الجملة'
-    );
+    const sourceWh = wholesaleWarehouses.find((w) => w.id === transferFromId);
+    const targetWh = wholesaleWarehouses.find((w) => w.id === transferToId);
+
+    transferWarehouseStock({
+      sourceWarehouseId: transferFromId,
+      sourceWarehouseName: sourceWh?.nameAr || 'المستودع المصدر',
+      targetWarehouseId: transferToId,
+      targetWarehouseName: targetWh?.nameAr || 'المستودع الهدف',
+      items: [
+        {
+          productId: prod.id,
+          productNameAr: prod.nameAr,
+          quantity: transferQuantity,
+          unit: prod.unit,
+        },
+      ],
+      reason: transferNotes || 'تحويل مخزني بين مستودعات الجملة',
+    });
 
     setIsTransferModalOpen(false);
     setTransferNotes('');

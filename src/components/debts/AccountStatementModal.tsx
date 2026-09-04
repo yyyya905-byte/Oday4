@@ -135,14 +135,14 @@ export const AccountStatementModal: React.FC<AccountStatementModalProps> = ({
           <div className="border-b-2 border-slate-900 pb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
               <h1 className="text-xl font-black text-slate-950 tracking-tight">
-                {settings.storeName || 'كيان كاشير'}
+                {settings.storeNameAr || 'كيان كاشير'}
               </h1>
               <p className="text-xs text-slate-600 font-bold">
                 {settings.tagline || 'نظام إدارة المبيعات ونقاط البيع المتكامل'}
               </p>
-              {settings.storePhone && (
+              {settings.phone && (
                 <div className="text-[11px] text-slate-500 font-mono mt-0.5">
-                  هاتف المنشأة: {settings.storePhone}
+                  هاتف المنشأة: {settings.phone}
                 </div>
               )}
             </div>

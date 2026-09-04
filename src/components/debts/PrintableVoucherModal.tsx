@@ -76,15 +76,15 @@ export const PrintableVoucherModal: React.FC<PrintableVoucherModalProps> = ({
           <div className="border-b-2 border-slate-900 pb-4 flex items-center justify-between">
             <div>
               <h1 className="text-xl font-black text-slate-950 tracking-tight">
-                {settings.storeName || 'كيان كاشير'}
+                {settings.storeNameAr || 'كيان كاشير'}
               </h1>
               <p className="text-xs text-slate-600 font-bold mt-0.5">
                 {settings.tagline || 'نظام إدارة المبيعات ونقاط البيع المتكامل'}
               </p>
-              {settings.storePhone && (
+              {settings.phone && (
                 <div className="flex items-center gap-1 text-[11px] text-slate-500 font-mono mt-1">
                   <Phone className="w-3 h-3" />
-                  <span>{settings.storePhone}</span>
+                  <span>{settings.phone}</span>
                 </div>
               )}
             </div>
@@ -198,7 +198,7 @@ export const PrintableVoucherModal: React.FC<PrintableVoucherModalProps> = ({
 
           {/* Footer Note */}
           <div className="text-center text-[10px] text-slate-400 pt-4">
-            تم إصدار هذا المستند رسمياً عبر {settings.storeName || 'كيان كاشير'} — نظام المحاسبة والديون
+            تم إصدار هذا المستند رسمياً عبر {settings.storeNameAr || 'كيان كاشير'} — نظام المحاسبة والديون
           </div>
         </div>
       </div>

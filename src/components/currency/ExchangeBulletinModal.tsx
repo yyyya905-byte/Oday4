@@ -14,9 +14,12 @@ import {
   Sparkles,
   Sliders,
   Eye,
-  Info
+  Info,
+  ExternalLink,
+  CheckCircle2,
+  Globe
 } from 'lucide-react';
-import { CURRENCY_PRESETS } from '../../utils/currencyUtils';
+import { CURRENCY_PRESETS, fetchLiveSyrianLiraRates } from '../../utils/currencyUtils';
 
 interface ExchangeBulletinModalProps {
   isOpen: boolean;
@@ -24,16 +27,16 @@ interface ExchangeBulletinModalProps {
 }
 
 export const ExchangeBulletinModal: React.FC<ExchangeBulletinModalProps> = ({ isOpen, onClose }) => {
-  const { settings, updateExchangeBulletin, formatCurrency, changeBaseCurrency } = useApp();
+  const { settings, updateExchangeBulletin, formatCurrency, changeBaseCurrency, notify } = useApp();
   const bulletin = settings.exchangeBulletin || {
-    usdBuyRate: 14800,
-    usdSellRate: 14950,
-    eurBuyRate: 16100,
-    eurSellRate: 16250,
-    goldGram21: 1050000,
+    usdBuyRate: 13100,
+    usdSellRate: 13150,
+    eurBuyRate: 15120,
+    eurSellRate: 15300,
+    goldGram21: 1652300,
     centralBankOfficialRate: 13500,
     lastUpdated: new Date().toISOString(),
-    sourceLabel: 'نشرة أسعار الصرف اليومية للمتجر',
+    sourceLabel: 'موقع الليرة اليوم (sp-today.com — سوق دمشق)',
     displayInHeader: true,
     displayInPosCart: true,
     displayInReceipts: true,
@@ -41,17 +44,19 @@ export const ExchangeBulletinModal: React.FC<ExchangeBulletinModalProps> = ({ is
   };
 
   // Form state
-  const [usdBuyRate, setUsdBuyRate] = useState<number>(bulletin.usdBuyRate || 14800);
-  const [usdSellRate, setUsdSellRate] = useState<number>(bulletin.usdSellRate || 14950);
-  const [eurBuyRate, setEurBuyRate] = useState<number>(bulletin.eurBuyRate || 16100);
-  const [eurSellRate, setEurSellRate] = useState<number>(bulletin.eurSellRate || 16250);
-  const [goldGram21, setGoldGram21] = useState<number>(bulletin.goldGram21 || 1050000);
+  const [usdBuyRate, setUsdBuyRate] = useState<number>(bulletin.usdBuyRate || 13100);
+  const [usdSellRate, setUsdSellRate] = useState<number>(bulletin.usdSellRate || 13150);
+  const [eurBuyRate, setEurBuyRate] = useState<number>(bulletin.eurBuyRate || 15120);
+  const [eurSellRate, setEurSellRate] = useState<number>(bulletin.eurSellRate || 15300);
+  const [goldGram21, setGoldGram21] = useState<number>(bulletin.goldGram21 || 1652300);
   const [centralBankOfficialRate, setCentralBankOfficialRate] = useState<number>(bulletin.centralBankOfficialRate || 13500);
-  const [sourceLabel, setSourceLabel] = useState<string>(bulletin.sourceLabel || 'نشرة أسعار الصرف لليوم');
+  const [sourceLabel, setSourceLabel] = useState<string>(bulletin.sourceLabel || 'موقع الليرة اليوم (sp-today.com)');
   const [displayInHeader, setDisplayInHeader] = useState<boolean>(bulletin.displayInHeader !== false);
   const [displayInPosCart, setDisplayInPosCart] = useState<boolean>(bulletin.displayInPosCart !== false);
   const [displayInReceipts, setDisplayInReceipts] = useState<boolean>(bulletin.displayInReceipts !== false);
   const [preferredDisplay, setPreferredDisplay] = useState<'USD' | 'EUR' | 'BOTH'>(bulletin.preferredDisplay || 'BOTH');
+  const [isFetchingLive, setIsFetchingLive] = useState<boolean>(false);
+  const [lastFetchStatus, setLastFetchStatus] = useState<string | null>(null);
 
   // Calculator State
   const [calcAmount, setCalcAmount] = useState<number>(100);
@@ -60,6 +65,34 @@ export const ExchangeBulletinModal: React.FC<ExchangeBulletinModalProps> = ({ is
   const [calcRateType, setCalcRateType] = useState<'buy' | 'sell'>('sell');
 
   if (!isOpen) return null;
+
+  const handleFetchFromSpToday = async () => {
+    setIsFetchingLive(true);
+    setLastFetchStatus(null);
+    try {
+      const res = await fetchLiveSyrianLiraRates();
+      if (res.success && res.rates) {
+        const rates = res.rates;
+        if (rates.usdBuy) setUsdBuyRate(rates.usdBuy);
+        if (rates.usdSell) setUsdSellRate(rates.usdSell);
+        if (rates.eurBuy) setEurBuyRate(rates.eurBuy);
+        if (rates.eurSell) setEurSellRate(rates.eurSell);
+        if (rates.goldGram21) setGoldGram21(rates.goldGram21);
+        if (rates.centralBankOfficial) setCentralBankOfficialRate(rates.centralBankOfficial);
+        if (rates.source) setSourceLabel(rates.source);
+
+        const timeStr = new Date().toLocaleTimeString('ar-SY', { hour: '2-digit', minute: '2-digit' });
+        setLastFetchStatus(`تم جلب الأسعار مباشرة من موقع الليرة اليوم (sp-today.com) — ${timeStr}`);
+        notify('تم جلب الأسعار الحية', `تم تحديث أسعار الصرف بنجاح من موقع الليرة اليوم (sp-today.com)`, 'success');
+      } else {
+        notify('تنبيه', 'تعذر جلب البيانات المباشرة، تم الاحتفاظ بالأسعار الحالية', 'warning');
+      }
+    } catch (err: any) {
+      notify('خطأ في الاتصال', 'تعذر جلب الأسعار المباشرة من الموقع', 'error');
+    } finally {
+      setIsFetchingLive(false);
+    }
+  };
 
   const handleSave = () => {
     updateExchangeBulletin({
@@ -120,6 +153,46 @@ export const ExchangeBulletinModal: React.FC<ExchangeBulletinModalProps> = ({ is
 
         {/* Modal Body */}
         <div className="p-6 overflow-y-auto space-y-6">
+          {/* SP-Today Live Sync Banner */}
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-500/15 via-emerald-500/10 to-blue-500/15 border border-amber-300/60 dark:border-amber-700/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs">
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-sm shrink-0 shadow-xs">
+                <Globe className="w-5 h-5" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-slate-900 dark:text-white">
+                    نشرة أسعار الصرف الحية من موقع الليرة اليوم
+                  </span>
+                  <a
+                    href="https://sp-today.com/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 hover:underline"
+                    title="زيارة الموقع الرسمي sp-today.com"
+                  >
+                    <span>sp-today.com</span>
+                    <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {lastFetchStatus || 'جلب مباشر لأسعار الدولار واليورو وغرام الذهب عيار 21 وفق سوق دمشق'}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              id="btn-fetch-live-rates-sp-today"
+              onClick={handleFetchFromSpToday}
+              disabled={isFetchingLive}
+              className="w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 font-black text-xs shadow-md shadow-amber-500/20 transition-all cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isFetchingLive ? 'animate-spin' : ''}`} />
+              <span>{isFetchingLive ? 'جارِ جلب الأسعار...' : 'تحديث فوري من sp-today'}</span>
+            </button>
+          </div>
+
           {/* Quick Rates Input Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* USD Card */}

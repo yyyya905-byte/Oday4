@@ -91,9 +91,6 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
     const newCust = addCustomer({
       name: newCustomerName.trim(),
       phone: newCustomerPhone.trim() || '0900000000',
-      totalSpent: 0,
-      visitCount: 0,
-      points: 0,
       currentDebt: 0,
       creditLimit: 500000,
     });

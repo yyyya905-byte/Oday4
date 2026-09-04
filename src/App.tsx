@@ -22,6 +22,7 @@ import { DevicesHubView } from './components/devices/DevicesHubView';
 import { PinSwitchModal } from './components/modals/PinSwitchModal';
 import { GlobalSearchModal } from './components/modals/GlobalSearchModal';
 import { ModeSelectionModal } from './components/modals/ModeSelectionModal';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 const AppContent: React.FC = () => {
   const { 
@@ -98,10 +99,7 @@ const AppContent: React.FC = () => {
         onClose={() => setIsPinModalOpen(false)}
       />
 
-      <GlobalSearchModal
-        isOpen={isSearchModalOpen}
-        onClose={() => setIsSearchModalOpen(false)}
-      />
+      <GlobalSearchModal />
 
       <ModeSelectionModal
         isOpen={isModeModalOpen}
@@ -113,8 +111,10 @@ const AppContent: React.FC = () => {
 
 export default function App() {
   return (
-    <AppProvider>
-      <AppContent />
-    </AppProvider>
+    <ErrorBoundary>
+      <AppProvider>
+        <AppContent />
+      </AppProvider>
+    </ErrorBoundary>
   );
 }
