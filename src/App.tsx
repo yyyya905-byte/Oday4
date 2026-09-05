@@ -19,6 +19,10 @@ import { SettingsView } from './components/settings/SettingsView';
 import { AboutView } from './components/about/AboutView';
 import { AIAssistantView } from './components/ai/AIAssistantView';
 import { DevicesHubView } from './components/devices/DevicesHubView';
+import { KitchenDisplayView } from './components/devices/KitchenDisplayView';
+import { CustomerFacingDisplayView } from './components/devices/CustomerFacingDisplayView';
+import { MobileWaiterView } from './components/devices/MobileWaiterView';
+import { MobileStockScannerView } from './components/devices/MobileStockScannerView';
 import { PinSwitchModal } from './components/modals/PinSwitchModal';
 import { GlobalSearchModal } from './components/modals/GlobalSearchModal';
 import { ModeSelectionModal } from './components/modals/ModeSelectionModal';
@@ -32,8 +36,36 @@ const AppContent: React.FC = () => {
     isSearchModalOpen, 
     setIsSearchModalOpen,
     isModeModalOpen,
-    setIsModeModalOpen
+    setIsModeModalOpen,
+    dedicatedDeviceRole,
+    setDedicatedDeviceRole
   } = useApp();
+
+  // If this device was paired or selected as a dedicated terminal
+  if (dedicatedDeviceRole === 'kitchen_display') {
+    return <KitchenDisplayView onBackToMain={() => {
+      setDedicatedDeviceRole(null);
+      try { localStorage.removeItem('kian_dedicated_device_role'); } catch {}
+    }} />;
+  }
+  if (dedicatedDeviceRole === 'customer_display') {
+    return <CustomerFacingDisplayView onBackToMain={() => {
+      setDedicatedDeviceRole(null);
+      try { localStorage.removeItem('kian_dedicated_device_role'); } catch {}
+    }} />;
+  }
+  if (dedicatedDeviceRole === 'waiter_mobile') {
+    return <MobileWaiterView onBackToMain={() => {
+      setDedicatedDeviceRole(null);
+      try { localStorage.removeItem('kian_dedicated_device_role'); } catch {}
+    }} />;
+  }
+  if (dedicatedDeviceRole === 'stock_scanner') {
+    return <MobileStockScannerView onBackToMain={() => {
+      setDedicatedDeviceRole(null);
+      try { localStorage.removeItem('kian_dedicated_device_role'); } catch {}
+    }} />;
+  }
 
   const renderActiveView = () => {
     switch (activeTab) {

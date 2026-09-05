@@ -475,6 +475,45 @@ let liveKitchenOrders: any[] = [
 
 let syncEvents: any[] = [];
 
+// SSE client connections for zero-latency device mesh
+let sseClients: { id: string; res: express.Response }[] = [];
+
+function broadcastSseEvent(eventType: string, data: any) {
+  const payload = `event: ${eventType}\ndata: ${JSON.stringify(data)}\n\n`;
+  sseClients.forEach(client => {
+    try {
+      client.res.write(payload);
+    } catch {
+      // client disconnected
+    }
+  });
+}
+
+// Server-Sent Events (SSE) stream for instantaneous cross-device synchronization
+app.get("/api/sync/stream", (req, res) => {
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+  });
+  const clientId = `sse-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  sseClients.push({ id: clientId, res });
+
+  // Send initial handshake
+  res.write(`event: INIT\ndata: ${JSON.stringify({ 
+    clientId, 
+    masterPairingPin, 
+    devices: connectedDevices,
+    liveCart: liveCartState,
+    kitchenOrders: liveKitchenOrders,
+    timestamp: new Date().toISOString()
+  })}\n\n`);
+
+  req.on("close", () => {
+    sseClients = sseClients.filter(c => c.id !== clientId);
+  });
+});
+
 // List connected devices
 app.get("/api/devices/list", (_req, res) => {
   // Mark inactive devices
@@ -518,11 +557,10 @@ app.post("/api/devices/pair", (req, res) => {
 
   connectedDevices.push(newDevice);
 
-  // Broadcast event
-  syncEvents.push({
-    id: `evt-${Date.now()}`,
-    type: 'DEVICE_CONNECTED',
-    payload: newDevice,
+  // Broadcast event to all active terminals via SSE
+  broadcastSseEvent('DEVICE_CONNECTED', {
+    device: newDevice,
+    devices: connectedDevices,
     timestamp: new Date().toISOString(),
   });
 
@@ -536,6 +574,7 @@ app.post("/api/devices/pair", (req, res) => {
 // Refresh master PIN
 app.post("/api/devices/refresh-pin", (_req, res) => {
   masterPairingPin = Math.floor(100000 + Math.random() * 900000).toString();
+  broadcastSseEvent('PIN_REFRESHED', { newPin: masterPairingPin });
   res.json({
     success: true,
     newPin: masterPairingPin,
@@ -556,11 +595,43 @@ app.post("/api/devices/heartbeat", (req, res) => {
   res.json({ success: true, timestamp: new Date().toISOString() });
 });
 
+// Ping / Ring a specific device to test connectivity & locate it
+app.post("/api/devices/ping", (req, res) => {
+  const { deviceId, senderName } = req.body;
+  const target = connectedDevices.find(d => d.id === deviceId);
+  broadcastSseEvent('DEVICE_PING', {
+    deviceId,
+    deviceName: target?.name || 'جهاز متصل',
+    senderName: senderName || 'الكاشير المركزي',
+    timestamp: new Date().toISOString(),
+  });
+  res.json({ success: true, message: `تم إرسال إشارة الفحص والتنبيه للجهاز: ${target?.name || deviceId}` });
+});
+
 // Disconnect / Revoke Device
 app.post("/api/devices/disconnect", (req, res) => {
   const { deviceId } = req.body;
   connectedDevices = connectedDevices.filter(d => d.id !== deviceId);
+  broadcastSseEvent('DEVICE_DISCONNECTED', { deviceId, devices: connectedDevices });
   res.json({ success: true, message: "تم فصل الجهاز بنجاح" });
+});
+
+// Remote Barcode Scanner Relay (Mobile Scanner / Waiter phone -> Master POS Cashier)
+app.post("/api/sync/scan-barcode", (req, res) => {
+  const { barcode, sourceDevice, deviceName, quantity = 1 } = req.body;
+  if (!barcode) return res.status(400).json({ success: false, error: "رمز الباركود مطلوب" });
+
+  const scanPayload = {
+    id: `scan-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+    barcode: String(barcode).trim(),
+    sourceDevice: sourceDevice || 'mobile_scanner',
+    deviceName: deviceName || 'قارئ باركود لاسلكي',
+    quantity: Number(quantity) || 1,
+    timestamp: new Date().toISOString(),
+  };
+
+  broadcastSseEvent('REMOTE_BARCODE_SCANNED', scanPayload);
+  res.json({ success: true, scanPayload });
 });
 
 // Live Cart Broadcast (POS -> Customer Facing Display)
@@ -576,6 +647,7 @@ app.post("/api/sync/cart", (req, res) => {
     pointsEarned: pointsEarned || 0,
     updatedAt: new Date().toISOString(),
   };
+  broadcastSseEvent('CART_UPDATE', liveCartState);
   res.json({ success: true, liveCart: liveCartState });
 });
 
@@ -603,6 +675,7 @@ app.post("/api/sync/kitchen-order", (req, res) => {
     });
   }
 
+  broadcastSseEvent('KITCHEN_ORDERS_UPDATE', liveKitchenOrders);
   res.json({ success: true, orders: liveKitchenOrders });
 });
 
@@ -621,6 +694,7 @@ app.post("/api/sync/kitchen-order-item-status", (req, res) => {
     else if (allReady) ord.status = 'ready';
     else ord.status = 'in_progress';
   }
+  broadcastSseEvent('KITCHEN_ORDERS_UPDATE', liveKitchenOrders);
   res.json({ success: true, orders: liveKitchenOrders });
 });
 

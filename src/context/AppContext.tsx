@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import {
   Product,
   Category,
@@ -237,6 +237,10 @@ interface AppContextType {
   addKitchenOrder: (order: Omit<KitchenOrder, 'id' | 'createdAt'>) => void;
   updateKitchenItemStatus: (orderId: string, itemId: string, status: 'pending' | 'cooking' | 'ready' | 'served') => void;
   syncAllDevices: () => Promise<void>;
+  sendRemoteBarcodeScan: (barcode: string, quantity?: number, deviceName?: string) => Promise<{ success: boolean }>;
+  pingDevice: (deviceId: string) => Promise<void>;
+  dedicatedDeviceRole: DeviceRole | null;
+  setDedicatedDeviceRole: (role: DeviceRole | null) => void;
 
   // Wholesale Warehouses & Transport Fleet Hub
   wholesaleWarehouses: WholesaleWarehouse[];
@@ -2504,9 +2508,254 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     else soundEffects.buttonClick();
   };
 
+  const [dedicatedDeviceRole, setDedicatedDeviceRole] = useState<DeviceRole | null>(() => {
+    try {
+      const saved = localStorage.getItem('kian_dedicated_device_role');
+      return (saved as DeviceRole) || null;
+    } catch {
+      return null;
+    }
+  });
+
+  // BroadcastChannel reference for local cross-tab zero-latency mesh
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+
+  // Send Remote Barcode Scan to Master POS
+  const sendRemoteBarcodeScan = async (barcode: string, quantity = 1, deviceName = 'قارئ باركود لاسلكي') => {
+    const payload = {
+      barcode: barcode.trim(),
+      quantity,
+      deviceName,
+      sourceDevice: 'mobile_scanner',
+      timestamp: new Date().toISOString()
+    };
+
+    // 1. Broadcast locally via BroadcastChannel for instant cross-tab / secondary window response (<1ms)
+    try {
+      broadcastChannelRef.current?.postMessage({
+        type: 'REMOTE_BARCODE_SCANNED',
+        payload
+      });
+    } catch {}
+
+    // 2. Relay through server so any other physical device on LAN/Wi-Fi gets it via SSE
+    try {
+      const res = await fetch('/api/sync/scan-barcode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      return { success: res.ok };
+    } catch (e) {
+      return { success: false };
+    }
+  };
+
+  // Ping a specific device to test connectivity & play an alert tone
+  const pingDevice = async (deviceId: string) => {
+    const target = devices.find(d => d.id === deviceId);
+    const sName = currentUser?.name || 'الكاشير المركزي';
+
+    try {
+      broadcastChannelRef.current?.postMessage({
+        type: 'DEVICE_PING',
+        payload: { deviceId, deviceName: target?.name, senderName: sName }
+      });
+      await fetch('/api/devices/ping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ deviceId, senderName: sName })
+      });
+      notify('تم إرسال إشارة فحص وتنبيه', `تم إرسال إشارة اختبار إلى: ${target?.name || deviceId}`, 'info');
+      soundEffects.beep();
+    } catch (e) {
+      notify('فشل إرسال إشارة الفحص', 'يرجى التحقق من الشبكة', 'error');
+    }
+  };
+
+  // Handle incoming remote barcode scans from other linked phones/tablets
+  const handleIncomingRemoteBarcode = (payload: { barcode: string; deviceName?: string; sourceDevice?: string; quantity?: number }) => {
+    if (!payload?.barcode) return;
+    const clean = payload.barcode.trim();
+    const qty = payload.quantity || 1;
+
+    // Look for product in catalog (matches barcode, sku, or any of the 100+ identification codes!)
+    const found = products.find(p =>
+      p.barcode === clean ||
+      p.sku.toLowerCase() === clean.toLowerCase() ||
+      p.identificationCodes?.some(c => c.toLowerCase() === clean.toLowerCase())
+    );
+
+    if (found) {
+      addToCart(found, qty);
+      soundEffects.playBeep();
+      notify(
+        '⚡ مسح باركود وارد عن بُعد',
+        `تم استلام [${language === 'ar' ? found.nameAr : found.nameEn}] من ${payload.deviceName || 'جهاز متنقل'} وإضافته للسلة (+${qty})`,
+        'success'
+      );
+    } else {
+      soundEffects.playWarning();
+      notify(
+        'باركود وارد غير مسجل',
+        `الكود (${clean}) الوارد من ${payload.deviceName || 'جهاز متنقل'} غير موجود بقائمة المنتجات`,
+        'warning'
+      );
+    }
+  };
+
+  // Auto-pair when scanning QR code URL with query parameters
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const pairPin = params.get('pairPin');
+      const roleParam = params.get('role') as DeviceRole | null;
+      const nameParam = params.get('name');
+
+      if (pairPin && roleParam) {
+        const defaultNames: Record<string, string> = {
+          kitchen_display: 'شاشة المطبخ KDS',
+          customer_display: 'شاشة الزبون CFD',
+          waiter_mobile: 'هاتف النادل',
+          stock_scanner: 'ماسح الجرد والباركود',
+          secondary_pos: 'كاشير فرعي 2',
+        };
+        const dName = nameParam || defaultNames[roleParam] || 'جهاز متصل جديد';
+
+        pairDevice({
+          name: dName,
+          role: roleParam,
+          deviceType: roleParam === 'kitchen_display' || roleParam === 'customer_display' ? 'tablet' : 'mobile',
+          pairingCode: pairPin,
+          cashierName: 'جهاز محمول',
+          branchName: 'الفرع الرئيسي'
+        }).then(res => {
+          if (res.success) {
+            setDedicatedDeviceRole(roleParam);
+            try {
+              localStorage.setItem('kian_dedicated_device_role', roleParam);
+            } catch {}
+            notify('تم ربط هذا الجهاز بنجاح!', `تم التفعيل كـ ${dName}`, 'success');
+            soundEffects.saleSuccess();
+          }
+        });
+
+        // Clean query parameters from URL address bar without reloading
+        const cleanUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+    } catch (e) {
+      console.error("Error checking pairing URL params:", e);
+    }
+  }, []);
+
+  // Real-Time Mesh & SSE listener
+  useEffect(() => {
+    // 1. BroadcastChannel for local cross-tab / cross-window instant communication
+    let bc: BroadcastChannel | null = null;
+    try {
+      if (typeof BroadcastChannel !== 'undefined') {
+        bc = new BroadcastChannel('kian_pos_devices_mesh');
+        broadcastChannelRef.current = bc;
+
+        bc.onmessage = (event) => {
+          const { type, payload } = event.data || {};
+          if (type === 'REMOTE_BARCODE_SCANNED') {
+            handleIncomingRemoteBarcode(payload);
+          } else if (type === 'DEVICE_PING') {
+            soundEffects.saleSuccess();
+            notify('🔔 إشارة فحص اتصال من الكاشير', `قام ${payload.senderName || 'الكاشير'} بفحص اتصال هذا الجهاز بنجاح`, 'info');
+          } else if (type === 'KITCHEN_ORDERS_UPDATE') {
+            if (Array.isArray(payload)) setKitchenOrders(payload);
+          } else if (type === 'REFRESH_DEVICES') {
+            refreshDevices();
+          }
+        };
+      }
+    } catch (e) {
+      console.warn("BroadcastChannel not supported or error:", e);
+    }
+
+    // 2. Server-Sent Events (SSE) for LAN/Wi-Fi real-time cross-device sync
+    let eventSource: EventSource | null = null;
+    try {
+      eventSource = new EventSource('/api/sync/stream');
+
+      eventSource.addEventListener('INIT', (e: any) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.devices) setDevices(data.devices);
+          if (data.masterPairingPin) setMasterPairingPin(data.masterPairingPin);
+          if (data.kitchenOrders) setKitchenOrders(data.kitchenOrders);
+        } catch {}
+      });
+
+      eventSource.addEventListener('DEVICE_CONNECTED', (e: any) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.devices) setDevices(data.devices);
+          else if (data.device) {
+            setDevices(prev => [...prev.filter(d => d.id !== data.device.id), data.device]);
+          }
+          notify('جهاز جديد متصل بالشبكة', data.device?.name || 'تم الربط بنجاح', 'info');
+        } catch {}
+      });
+
+      eventSource.addEventListener('DEVICE_DISCONNECTED', (e: any) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.devices) setDevices(data.devices);
+          else if (data.deviceId) {
+            setDevices(prev => prev.filter(d => d.id !== data.deviceId));
+          }
+        } catch {}
+      });
+
+      eventSource.addEventListener('DEVICE_PING', (e: any) => {
+        try {
+          const data = JSON.parse(e.data);
+          soundEffects.saleSuccess();
+          notify('🔔 إشارة فحص اتصال واردة', `قام ${data.senderName || 'الكاشير المركزي'} بفحص اتصال هذا الجهاز بنجاح`, 'info');
+        } catch {}
+      });
+
+      eventSource.addEventListener('REMOTE_BARCODE_SCANNED', (e: any) => {
+        try {
+          const data = JSON.parse(e.data);
+          handleIncomingRemoteBarcode(data);
+        } catch {}
+      });
+
+      eventSource.addEventListener('KITCHEN_ORDERS_UPDATE', (e: any) => {
+        try {
+          const orders = JSON.parse(e.data);
+          if (Array.isArray(orders)) setKitchenOrders(orders);
+        } catch {}
+      });
+
+      eventSource.addEventListener('PIN_REFRESHED', (e: any) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.newPin) setMasterPairingPin(data.newPin);
+        } catch {}
+      });
+
+      eventSource.onerror = () => {
+        // Handled automatically by browser reconnection
+      };
+    } catch (e) {
+      console.warn("EventSource setup warning:", e);
+    }
+
+    return () => {
+      bc?.close();
+      eventSource?.close();
+    };
+  }, [products, language]);
+
   const syncAllDevices = async () => {
     await refreshDevices();
-    notify('تمت المزامنة الفورية مع كافة الأجهزة المتصلة', 'الشبكة تعمل بكفاءة عالية', 'success');
+    notify('تمت المزامنة الفورية مع كافة الأجهزة المتصلة', 'الشبكة تعمل بكفاءة عالية وبث حي لحظي', 'success');
   };
 
   // Broadcast live cart changes to CFD
@@ -2531,7 +2780,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Initial load of devices & fetch interval
   useEffect(() => {
     refreshDevices();
-    const interval = setInterval(refreshDevices, 15000);
+    const interval = setInterval(refreshDevices, 8000);
     return () => clearInterval(interval);
   }, []);
 
@@ -2669,6 +2918,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addKitchenOrder,
         updateKitchenItemStatus,
         syncAllDevices,
+        sendRemoteBarcodeScan,
+        pingDevice,
+        dedicatedDeviceRole,
+        setDedicatedDeviceRole,
         wholesaleWarehouses,
         deliveryVehicles,
         vehicleManifests,

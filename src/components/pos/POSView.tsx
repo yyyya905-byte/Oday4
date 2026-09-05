@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Product, Category, DiningType } from '../../types';
+import { soundEffects } from '../../services/audio';
 import {
   Search,
   ScanBarcode,
@@ -86,17 +87,97 @@ export const POSView: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>('cat_all');
   const [showFavoritesOnly, setShowFavoritesOnly] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [lastScannedBanner, setLastScannedBanner] = useState<{
+    product: Product;
+    code: string;
+    count: number;
+  } | null>(null);
 
-  // Interactive Cashier Change Calculator State
-  const [posCashPaidInput, setPosCashPaidInput] = useState<string>('');
-  const [isCashCalcOpen, setIsCashCalcOpen] = useState<boolean>(true);
-
-  // Modals
+  // Modals & Popups
   const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
   const [isCustomerQRModalOpen, setIsCustomerQRModalOpen] = useState(false);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   const [isKitchenTicketModalOpen, setIsKitchenTicketModalOpen] = useState(false);
+
+  // Interactive Cashier Change Calculator State
+  const [posCashPaidInput, setPosCashPaidInput] = useState<string>('');
+  const [isCashCalcOpen, setIsCashCalcOpen] = useState<boolean>(true);
+
+  // Auto-focus search input immediately upon opening Cashier page
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Global hardware barcode scanner reader (USB / Bluetooth / Wireless gun)
+  useEffect(() => {
+    let scanBuffer = '';
+    let lastKeyTime = 0;
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept when modal windows are open or in textarea
+      const target = e.target as HTMLElement | null;
+      const isEditingTextarea = target && target.tagName === 'TEXTAREA';
+      const isModalOpen = isBarcodeModalOpen || isCustomerQRModalOpen || isPaymentModalOpen || isKitchenTicketModalOpen;
+      if (isModalOpen || isEditingTextarea) return;
+
+      const currentTime = Date.now();
+      const isFast = (currentTime - lastKeyTime) < 80;
+      lastKeyTime = currentTime;
+
+      if (e.key === 'Enter') {
+        const candidate = (scanBuffer.trim() || searchQuery.trim());
+        if (candidate.length >= 2) {
+          const clean = candidate.toLowerCase();
+          const found = products.find(p =>
+            p.barcode.toLowerCase() === clean ||
+            p.sku.toLowerCase() === clean ||
+            p.identificationCodes?.some(c => c.toLowerCase() === clean)
+          );
+
+          if (found) {
+            e.preventDefault();
+            addToCart(found);
+            soundEffects.playBeep();
+            setLastScannedBanner(prev => ({
+              product: found,
+              code: candidate,
+              count: prev?.product.id === found.id ? prev.count + 1 : 1
+            }));
+            setSearchQuery('');
+            scanBuffer = '';
+            // keep focus on search
+            searchInputRef.current?.focus();
+            return;
+          }
+        }
+        scanBuffer = '';
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (isFast || scanBuffer.length > 0) {
+          scanBuffer += e.key;
+        } else {
+          scanBuffer = e.key;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [products, searchQuery, isBarcodeModalOpen, isCustomerQRModalOpen, isPaymentModalOpen, isKitchenTicketModalOpen]);
+
+  // Auto-dismiss scanned alert banner
+  useEffect(() => {
+    if (lastScannedBanner) {
+      const timer = setTimeout(() => {
+        setLastScannedBanner(null);
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [lastScannedBanner]);
 
   // Item Note Inline Editing
   const [editingNoteItemKey, setEditingNoteItemKey] = useState<string | null>(null);
@@ -145,11 +226,23 @@ export const POSView: React.FC = () => {
       );
       if (exactMatch) {
         addToCart(exactMatch);
+        soundEffects.playBeep();
+        setLastScannedBanner(prev => ({
+          product: exactMatch,
+          code: searchQuery.trim(),
+          count: prev?.product.id === exactMatch.id ? prev.count + 1 : 1
+        }));
         setSearchQuery('');
         return;
       }
       if (filteredProducts.length === 1) {
         addToCart(filteredProducts[0]);
+        soundEffects.playBeep();
+        setLastScannedBanner(prev => ({
+          product: filteredProducts[0],
+          code: searchQuery.trim(),
+          count: prev?.product.id === filteredProducts[0].id ? prev.count + 1 : 1
+        }));
         setSearchQuery('');
       }
     }
@@ -309,23 +402,55 @@ export const POSView: React.FC = () => {
           </div>
         </div>
 
+        {/* Live Barcode Scanned Floating Alert */}
+        {lastScannedBanner && (
+          <div className="flex items-center justify-between p-3 bg-emerald-500/15 border border-emerald-500/40 rounded-2xl animate-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-3 w-3 relative shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+              </span>
+              <div>
+                <p className="text-xs font-black text-emerald-800 dark:text-emerald-200">
+                  ⚡ تم مسح الباركود بنجاح وإضافته للسلة
+                </p>
+                <p className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">
+                  {language === 'ar' ? lastScannedBanner.product.nameAr : lastScannedBanner.product.nameEn} ({formatCurrency(lastScannedBanner.product.price)}) - الكود: {lastScannedBanner.code}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-black bg-emerald-600 text-white px-2.5 py-1 rounded-xl shadow-xs">
+                +{lastScannedBanner.count} بالسلة
+              </span>
+              <button
+                onClick={() => setLastScannedBanner(null)}
+                className="text-xs text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 p-1"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Search & Direct Controls Bar */}
         <div className="flex items-center gap-2">
-          {/* Search Input */}
+          {/* Search Input with Auto-Focus and Hardware Barcode Readiness */}
           <div className="relative flex-1">
             <input
+              ref={searchInputRef}
               id="pos-search-input"
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               onKeyDown={handleSearchInputKeyDown}
               placeholder={businessMode === 'restaurant' 
-                ? (language === 'ar' ? 'بحث عن وجبة، مشروب، حلى، أو كود الصنف...' : 'Search meal, drink, dessert...')
+                ? (language === 'ar' ? 'بحث عن وجبة، مشروب، حلى، أو امسح الباركود مباشرة...' : 'Search meal, drink, or scan barcode...')
                 : businessMode === 'wholesale'
-                ? (language === 'ar' ? 'بحث عن بضاعة، كرتونة، طرد، باركود، أو كود SKU...' : 'Search wholesale items, cartons...')
-                : t('searchProductPlaceholder')
+                ? (language === 'ar' ? 'بحث عن بضاعة، كود تعريفي، باركود، أو امسح فوراً...' : 'Search item, identification code, or scan...')
+                : (language === 'ar' ? 'امسح الباركود فوراً أو ابحث عن منتج، كود SKU...' : 'Scan barcode directly or search product...')
               }
-              className="w-full pl-3 pr-9 py-2.5 bg-white dark:bg-slate-900 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs focus:outline-none focus:border-amber-500"
+              className="w-full pl-3 pr-9 py-2.5 bg-white dark:bg-slate-900 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs focus:outline-none focus:border-amber-500 transition-all"
             />
             <Search className="w-4 h-4 text-slate-400 absolute start-3 top-3.5" />
             {searchQuery && (
@@ -338,15 +463,16 @@ export const POSView: React.FC = () => {
             )}
           </div>
 
-          {/* Barcode Scanner Button */}
+          {/* Barcode Scanner Button (Camera / Modal) */}
           <button
             id="btn-scan-barcode-modal"
             onClick={() => setIsBarcodeModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs active:scale-95 transition-all"
-            title={t('scanBarcode')}
+            className="flex items-center gap-1.5 px-3 py-2.5 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs active:scale-95 transition-all shrink-0"
+            title={language === 'ar' ? 'قارئ الباركود والكاميرا' : 'Barcode & Camera Scanner'}
           >
             <ScanBarcode className="w-4 h-4 text-amber-500" />
             <span className="hidden sm:inline">{t('scanBarcode')}</span>
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="القارئ نشط تلقائياً" />
           </button>
 
           {/* Customer QR Scanner Button */}
