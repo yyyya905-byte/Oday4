@@ -41,6 +41,7 @@ export interface Product {
   wholesaleUnit?: string; // e.g. 'كرتونة', 'صندوق', 'دزينة', 'باقة', 'طرد'
   wholesaleUnitMultiplier?: number; // Number of single pieces inside wholesale unit (e.g. 12 or 24)
   tradeType?: TradeType; // 'retail' | 'wholesale' | 'both'
+  identificationCodes?: string[]; // Multiple identification codes / barcodes / carton codes / serials (supports 100+ codes per product/wholesale unit)
   stock: number;
   minStock: number;
   unit: string;

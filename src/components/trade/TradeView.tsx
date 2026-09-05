@@ -30,7 +30,13 @@ import {
   ShieldCheck,
   ChevronRight,
   Tag,
-  Store
+  Store,
+  Barcode,
+  Copy,
+  Trash2,
+  ListPlus,
+  Hash,
+  RefreshCw
 } from 'lucide-react';
 
 export const TradeView: React.FC = () => {
@@ -68,6 +74,18 @@ export const TradeView: React.FC = () => {
   const [editUnit, setEditUnit] = useState<string>('');
   const [editMultiplier, setEditMultiplier] = useState<number>(1);
   const [editTradeType, setEditTradeType] = useState<TradeType>('both');
+
+  // Identification codes state for the editing wholesale product (supports 100+ codes)
+  const [editIdentificationCodes, setEditIdentificationCodes] = useState<string[]>([]);
+  const [newSingleCode, setNewSingleCode] = useState<string>('');
+  const [bulkCodesText, setBulkCodesText] = useState<string>('');
+  const [showBulkInput, setShowBulkInput] = useState<boolean>(false);
+  const [showSeriesGenerator, setShowSeriesGenerator] = useState<boolean>(false);
+  const [seriesPrefix, setSeriesPrefix] = useState<string>('WHS-');
+  const [seriesStart, setSeriesStart] = useState<number>(1);
+  const [seriesCount, setSeriesCount] = useState<number>(100);
+  const [codesFilterQuery, setCodesFilterQuery] = useState<string>('');
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
 
   // Bulk Price Adjuster Modal
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
@@ -124,10 +142,14 @@ export const TradeView: React.FC = () => {
   // Filtered Products for Matrix
   const filteredProducts = useMemo(() => {
     return products.filter(p => {
+      const q = searchQuery.toLowerCase().trim();
       const matchSearch =
-        p.nameAr.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.nameEn.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        p.barcode.includes(searchQuery);
+        !q ||
+        p.nameAr.toLowerCase().includes(q) ||
+        p.nameEn.toLowerCase().includes(q) ||
+        p.sku.toLowerCase().includes(q) ||
+        p.barcode.includes(q) ||
+        p.identificationCodes?.some(c => c.toLowerCase().includes(q));
       const matchCategory = selectedCategory === 'all' || p.categoryId === selectedCategory;
       const matchTradeType = tradeTypeFilter === 'all' || (p.tradeType || 'both') === tradeTypeFilter;
       return matchSearch && matchCategory && matchTradeType;
@@ -142,6 +164,99 @@ export const TradeView: React.FC = () => {
     setEditUnit(prod.wholesaleUnit || 'طرد / كرتونة');
     setEditMultiplier(prod.wholesaleUnitMultiplier || 6);
     setEditTradeType((prod.tradeType || 'both') as TradeType);
+    setEditIdentificationCodes(prod.identificationCodes ? [...prod.identificationCodes] : []);
+    setNewSingleCode('');
+    setBulkCodesText('');
+    setShowBulkInput(false);
+    setShowSeriesGenerator(false);
+    setCodesFilterQuery('');
+  };
+
+  // Add single identification code
+  const handleAddSingleCode = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const clean = newSingleCode.trim();
+    if (!clean) return;
+    if (editIdentificationCodes.includes(clean)) {
+      notify('تنبيه', `الكود التعريفي ${clean} مسجل مسبقاً لهذا الصنف`, 'warning');
+      return;
+    }
+    setEditIdentificationCodes(prev => [clean, ...prev]);
+    setNewSingleCode('');
+    notify('تمت إضافة كود تعريفي', clean, 'success');
+  };
+
+  // Bulk import identification codes (e.g. 100+ codes at once)
+  const handleImportBulkCodes = () => {
+    if (!bulkCodesText.trim()) return;
+    const rawTokens = bulkCodesText.split(/[\r\n,\t;]+/);
+    const validCodes: string[] = [];
+    const seen = new Set(editIdentificationCodes);
+
+    for (const token of rawTokens) {
+      const trimmed = token.trim();
+      if (trimmed && !seen.has(trimmed)) {
+        seen.add(trimmed);
+        validCodes.push(trimmed);
+      }
+    }
+
+    if (validCodes.length === 0) {
+      notify('تنبيه', 'لم يتم العثور على أكواد جديدة صالحة أو الأكواد مضافة مسبقاً', 'warning');
+      return;
+    }
+
+    setEditIdentificationCodes(prev => [...validCodes, ...prev]);
+    setBulkCodesText('');
+    setShowBulkInput(false);
+    notify('تم استيراد الأكواد بنجاح', `تمت إضافة ${validCodes.length} كود تعريفي جديد (الإجمالي: ${editIdentificationCodes.length + validCodes.length} كود)`, 'success');
+  };
+
+  // Generate sequence of identification codes (e.g. 100 serial codes in 1 click)
+  const handleGenerateSeries = () => {
+    const count = Math.max(1, Math.min(seriesCount, 500));
+    const prefix = seriesPrefix.trim() || 'WHS-';
+    const start = Math.max(0, seriesStart);
+    const newGenerated: string[] = [];
+    const seen = new Set(editIdentificationCodes);
+
+    for (let i = 0; i < count; i++) {
+      const codeNum = String(start + i).padStart(count >= 100 ? 4 : 3, '0');
+      const generated = `${prefix}${codeNum}`;
+      if (!seen.has(generated)) {
+        seen.add(generated);
+        newGenerated.push(generated);
+      }
+    }
+
+    if (newGenerated.length === 0) {
+      notify('تنبيه', 'الأكواد المتسلسلة مولدة مسبقاً', 'warning');
+      return;
+    }
+
+    setEditIdentificationCodes(prev => [...newGenerated, ...prev]);
+    setShowSeriesGenerator(false);
+    notify('تم توليد السلسلة بنجاح', `تم إنشاء ${newGenerated.length} كود تعريفي متسلسل دفعة واحدة (الإجمالي: ${editIdentificationCodes.length + newGenerated.length} كود)`, 'success');
+  };
+
+  // Delete single code
+  const handleDeleteCode = (code: string) => {
+    setEditIdentificationCodes(prev => prev.filter(c => c !== code));
+  };
+
+  // Clear all codes
+  const handleClearAllCodes = () => {
+    if (window.confirm('هل أنت متأكد من رغبتك في حذف كافة الأكواد التعريفية لهذا المنتج؟')) {
+      setEditIdentificationCodes([]);
+      notify('تم تفريغ الأكواد', 'تم حذف كافة الأكواد التعريفية للمنتج', 'info');
+    }
+  };
+
+  // Copy code helper
+  const handleCopyCode = (code: string) => {
+    navigator.clipboard?.writeText(code);
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(null), 2000);
   };
 
   // Save Edit Product
@@ -153,9 +268,10 @@ export const TradeView: React.FC = () => {
       wholesaleUnit: editUnit,
       wholesaleUnitMultiplier: Number(editMultiplier),
       tradeType: editTradeType,
+      identificationCodes: editIdentificationCodes,
     });
     setEditingProduct(null);
-    notify('تم حفظ أسعار ووحدات الجملة', editingProduct.nameAr, 'success');
+    notify('تم حفظ تفاصيل الجملة والأكواد', `${editingProduct.nameAr} (${editIdentificationCodes.length} كود تعريفي)`, 'success');
   };
 
   // Open Add / Edit Wholesale Customer
@@ -538,8 +654,21 @@ export const TradeView: React.FC = () => {
                             <div className="font-bold text-slate-900 dark:text-white">
                               {dir === 'rtl' ? prod.nameAr : prod.nameEn}
                             </div>
-                            <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-                              {prod.barcode}
+                            <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                              <span className="text-[10px] font-mono text-slate-400">
+                                {prod.barcode}
+                              </span>
+                              {prod.identificationCodes && prod.identificationCodes.length > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditProduct(prod)}
+                                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 dark:hover:bg-amber-900 border border-amber-200/80 dark:border-amber-800/60 transition-colors"
+                                  title="انقر لعرض وإدارة الأكواد والباركودات المتعددة لهذا المنتج"
+                                >
+                                  <Barcode className="w-2.5 h-2.5" />
+                                  <span>{prod.identificationCodes.length} كود تعريفي</span>
+                                </button>
+                              )}
                             </div>
                           </td>
 
@@ -980,137 +1109,440 @@ export const TradeView: React.FC = () => {
         )}
       </div>
 
-      {/* ======================= MODAL: EDIT PRODUCT WHOLESALE SPECS ======================= */}
+      {/* ======================= MODAL: EDIT PRODUCT WHOLESALE SPECS & IDENTIFICATION CODES ======================= */}
       {editingProduct && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full border border-slate-200 dark:border-slate-800 overflow-hidden shadow-2xl animate-in zoom-in-95">
-            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 bg-amber-500 text-white rounded-xl">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-3xl w-full border border-slate-200 dark:border-slate-800 overflow-hidden shadow-2xl animate-in zoom-in-95 max-h-[92vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 bg-slate-50/50 dark:bg-slate-800/40">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-500 text-white rounded-2xl shadow-md shadow-amber-500/20">
                   <Package className="w-5 h-5" />
                 </div>
                 <div>
                   <h3 className="text-base font-black text-slate-900 dark:text-white">
-                    تعديل أسعار ووحدات الجملة
+                    تعديل أسعار ووحدات وأكواد الجملة التعريفية
                   </h3>
-                  <p className="text-xs text-slate-400">
-                    {dir === 'rtl' ? editingProduct.nameAr : editingProduct.nameEn}
+                  <p className="text-xs text-slate-400 font-medium mt-0.5">
+                    {dir === 'rtl' ? editingProduct.nameAr : editingProduct.nameEn} • باركود أساسي: {editingProduct.barcode || '—'}
                   </p>
                 </div>
               </div>
               <button
                 onClick={() => setEditingProduct(null)}
-                className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400"
+                className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-5 space-y-4 text-xs">
-              {/* Product Reference Card */}
-              <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-xl grid grid-cols-2 gap-2 text-slate-600 dark:text-slate-300">
+            {/* Modal Body (Scrollable) */}
+            <div className="p-5 overflow-y-auto space-y-5 text-xs">
+              {/* Product Reference Stats */}
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl grid grid-cols-2 sm:grid-cols-4 gap-3 text-slate-600 dark:text-slate-300 border border-slate-100 dark:border-slate-800">
                 <div>
-                  <span className="text-[10px] text-slate-400">سعر التكلفة:</span>
-                  <p className="font-mono font-bold">{formatCurrency(editingProduct.costPrice)}</p>
+                  <span className="text-[10px] text-slate-400 block font-bold">سعر التكلفة:</span>
+                  <p className="font-mono font-bold text-sm text-slate-700 dark:text-slate-200">{formatCurrency(editingProduct.costPrice)}</p>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400">سعر المفرق الحالي:</span>
-                  <p className="font-mono font-bold text-slate-900 dark:text-white">{formatCurrency(editingProduct.price)}</p>
+                  <span className="text-[10px] text-slate-400 block font-bold">سعر المفرق الحالي:</span>
+                  <p className="font-mono font-bold text-sm text-slate-900 dark:text-white">{formatCurrency(editingProduct.price)}</p>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-bold">رصيد المخزون الحالي:</span>
+                  <p className="font-mono font-bold text-sm text-emerald-600">{editingProduct.stock} {editingProduct.unit}</p>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 block font-bold">الأكواد التعريفية:</span>
+                  <p className="font-mono font-bold text-sm text-amber-600">{editIdentificationCodes.length} كود مسجل</p>
                 </div>
               </div>
 
-              {/* Wholesale Price */}
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  سعر بيع الجملة (للقطعة أو العبوة الواحدة):
-                </label>
-                <input
-                  type="number"
-                  value={editWholesalePrice}
-                  onChange={e => setEditWholesalePrice(Number(e.target.value))}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500"
-                />
-                <span className="text-[10px] text-emerald-600 mt-1 block">
-                  الهامش الربحي للجملة: {editWholesalePrice > editingProduct.costPrice ? Math.round(((editWholesalePrice - editingProduct.costPrice) / editWholesalePrice) * 100) : 0}%
-                </span>
-              </div>
-
-              {/* Wholesale Unit Name & Multiplier */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    اسم وحدة الجملة:
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="مثال: كرتونة (24 عبوة)"
-                    value={editUnit}
-                    onChange={e => setEditUnit(e.target.value)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
-                  />
+              {/* Section 1: Wholesale Price & Packaging */}
+              <div className="p-4 rounded-2xl bg-amber-50/40 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-black text-amber-900 dark:text-amber-300 flex items-center gap-1.5 text-sm">
+                    <DollarSign className="w-4 h-4 text-amber-600" />
+                    <span>أسعار ووحدة تعبئة الجملة</span>
+                  </h4>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/60 text-amber-800 dark:text-amber-200">
+                    هامش الربح: {editWholesalePrice > editingProduct.costPrice ? Math.round(((editWholesalePrice - editingProduct.costPrice) / editWholesalePrice) * 100) : 0}%
+                  </span>
                 </div>
 
+                {/* Wholesale Price */}
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    معامل التحويل (كم قطعة بالوحدة):
+                    سعر بيع الجملة (للقطعة الواحدة داخل وحدة التعبئة):
                   </label>
                   <input
                     type="number"
-                    min="1"
-                    value={editMultiplier}
-                    onChange={e => setEditMultiplier(Number(e.target.value))}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
+                    value={editWholesalePrice}
+                    onChange={e => setEditWholesalePrice(Number(e.target.value))}
+                    className="w-full px-3.5 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono font-bold text-slate-900 dark:text-white focus:ring-2 focus:ring-amber-500"
                   />
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 flex items-center justify-between">
+                    <span>السعر الإجمالي لوحدة الجملة ({editUnit || 'كرتونة'}): <strong className="text-amber-600 font-mono">{formatCurrency(editWholesalePrice * (editMultiplier || 1))}</strong></span>
+                    <span>خصم الجملة: <strong className="text-emerald-600">{editingProduct.price > 0 ? Math.round(((editingProduct.price - editWholesalePrice) / editingProduct.price) * 100) : 0}%</strong> عن المفرق</span>
+                  </div>
+                </div>
+
+                {/* Wholesale Unit Name & Multiplier */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      اسم وحدة الجملة:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="مثال: كرتونة (24 عبوة) أو طرد"
+                      value={editUnit}
+                      onChange={e => setEditUnit(e.target.value)}
+                      className="w-full px-3.5 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      معامل التحويل (كم قطعة في وحدة الجملة):
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={editMultiplier}
+                      onChange={e => setEditMultiplier(Number(e.target.value))}
+                      className="w-full px-3.5 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
+                    />
+                  </div>
+                </div>
+
+                {/* Min Wholesale Qty & Trade Type */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      الحد الأدنى لكمية الجملة (بالقطع):
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      value={editMinQty}
+                      onChange={e => setEditMinQty(Number(e.target.value))}
+                      className="w-full px-3.5 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      إتاحة الصنف للبيع:
+                    </label>
+                    <select
+                      value={editTradeType}
+                      onChange={e => setEditTradeType(e.target.value as any)}
+                      className="w-full px-3.5 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-900 dark:text-white"
+                    >
+                      <option value="both">متاح بالمفرق والجملة معاً</option>
+                      <option value="wholesale">جملة فقط</option>
+                      <option value="retail">مفرق فقط</option>
+                    </select>
+                  </div>
                 </div>
               </div>
 
-              {/* Min Wholesale Qty & Trade Type */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    الحد الأدنى لكمية الجملة:
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={editMinQty}
-                    onChange={e => setEditMinQty(Number(e.target.value))}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white"
-                  />
+              {/* Section 2: MULTI-IDENTIFICATION CODES (Supports 100+ Codes per Product) */}
+              <div className="p-4 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-100 dark:border-slate-700">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 rounded-xl">
+                      <Barcode className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="font-black text-slate-900 dark:text-white text-sm">
+                        الأكواد التعريفية والباركودات للوحدة / الصنف
+                      </h4>
+                      <p className="text-[11px] text-slate-400">
+                        يدعم ربط أكثر من 100 كود تعريفي (باركود كرتونة، طرد، دفعة، سيريال، بدائل) للصنف الواحد.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Badges count */}
+                  <div className="flex items-center gap-2 self-start sm:self-auto">
+                    <span className="px-2.5 py-1 rounded-full text-[11px] font-mono font-bold bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200">
+                      {editIdentificationCodes.length} كود مسجل
+                    </span>
+                    {editIdentificationCodes.length >= 100 && (
+                      <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/70 dark:text-emerald-300">
+                        +100 كود مفعّل
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    إتاحة البيع:
-                  </label>
-                  <select
-                    value={editTradeType}
-                    onChange={e => setEditTradeType(e.target.value as any)}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl font-bold text-slate-900 dark:text-white"
+                {/* Add single code form */}
+                <form onSubmit={handleAddSingleCode} className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="text"
+                      placeholder="أدخل أو امسح كود تعريفي جديد (باركود كرتونة، رقم تسلسلي، كود المورد)..."
+                      value={newSingleCode}
+                      onChange={e => setNewSingleCode(e.target.value)}
+                      className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl font-mono text-xs text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-all shrink-0 active:scale-95 shadow-sm shadow-blue-500/20"
                   >
-                    <option value="both">متاح بالمفرق والجملة معاً</option>
-                    <option value="wholesale">جملة فقط</option>
-                    <option value="retail">مفرق فقط</option>
-                  </select>
+                    <Plus className="w-4 h-4" />
+                    <span>إضافة كود</span>
+                  </button>
+                </form>
+
+                {/* Quick actions for 100+ codes handling */}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowBulkInput(!showBulkInput);
+                      setShowSeriesGenerator(false);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 border transition-all ${
+                      showBulkInput
+                        ? 'bg-amber-500 text-white border-amber-500 shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <ListPlus className="w-3.5 h-3.5" />
+                    <span>لصق أو استيراد جماعي (حتى مئات الأكواد)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSeriesGenerator(!showSeriesGenerator);
+                      setShowBulkInput(false);
+                    }}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 border transition-all ${
+                      showSeriesGenerator
+                        ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                    }`}
+                  >
+                    <Hash className="w-3.5 h-3.5" />
+                    <span>توليد 100 كود متسلسل تلقائياً</span>
+                  </button>
+
+                  {editIdentificationCodes.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={handleClearAllCodes}
+                      className="px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors mr-auto"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>مسح الكل</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Bulk Import Drawer */}
+                {showBulkInput && (
+                  <div className="p-3.5 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/60 space-y-2 animate-in slide-in-from-top-2">
+                    <label className="block font-bold text-amber-950 dark:text-amber-200">
+                      الصق الأكواد التعريفية هنا (مفصولة بأسطر جديدة أو فواصل — يدعم لصق أكثر من 100 كود معاً):
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={bulkCodesText}
+                      onChange={e => setBulkCodesText(e.target.value)}
+                      placeholder={"62100100101\n62100100102\nCRTN-BOX-8801\nCRTN-BOX-8802\n..."}
+                      className="w-full p-2.5 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-800 rounded-xl font-mono text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    />
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                        سيتم تنظيف المسافات وحذف الأكواد المكررة تلقائياً.
+                      </span>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowBulkInput(false)}
+                          className="px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold"
+                        >
+                          إغلاق
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleImportBulkCodes}
+                          className="px-4 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold"
+                        >
+                          استيراد الأكواد الآن
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Series Generator Drawer */}
+                {showSeriesGenerator && (
+                  <div className="p-3.5 rounded-xl bg-purple-50/70 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-900/60 space-y-3 animate-in slide-in-from-top-2">
+                    <h5 className="font-bold text-purple-950 dark:text-purple-200">
+                      توليد سلسلة أكواد تعريفية تسلسلية لكراتين وطرود الجملة:
+                    </h5>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                          البادئة (Prefix):
+                        </label>
+                        <input
+                          type="text"
+                          value={seriesPrefix}
+                          onChange={e => setSeriesPrefix(e.target.value)}
+                          placeholder="مثال: CRTN-"
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-mono text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                          رقم البداية:
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={seriesStart}
+                          onChange={e => setSeriesStart(Number(e.target.value))}
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-mono text-xs"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                          عدد الأكواد (حتى 500):
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="500"
+                          value={seriesCount}
+                          onChange={e => setSeriesCount(Number(e.target.value))}
+                          className="w-full px-2.5 py-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg font-mono text-xs font-bold text-purple-600"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[10px] text-slate-500">
+                        معاينة: {seriesPrefix}{String(seriesStart).padStart(seriesCount >= 100 ? 4 : 3, '0')} إلى {seriesPrefix}{String(seriesStart + seriesCount - 1).padStart(seriesCount >= 100 ? 4 : 3, '0')}
+                      </span>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowSeriesGenerator(false)}
+                          className="px-3 py-1.5 rounded-lg bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold"
+                        >
+                          إلغاء
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleGenerateSeries}
+                          className="px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold shadow-sm"
+                        >
+                          توليد {seriesCount} كود الآن
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Codes List & Filter */}
+                <div className="space-y-2">
+                  {editIdentificationCodes.length > 6 && (
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="بحث وتصفية بين الأكواد المسجلة..."
+                        value={codesFilterQuery}
+                        onChange={e => setCodesFilterQuery(e.target.value)}
+                        className="w-full pl-3 pr-8 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-800 dark:text-slate-200"
+                      />
+                      <Search className="w-3.5 h-3.5 text-slate-400 absolute start-2.5 top-2.5" />
+                    </div>
+                  )}
+
+                  {/* Scrollable Codes List */}
+                  {editIdentificationCodes.length === 0 ? (
+                    <div className="p-6 text-center rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-dashed border-slate-200 dark:border-slate-700 text-slate-400">
+                      <Barcode className="w-8 h-8 mx-auto mb-1.5 opacity-40" />
+                      <p className="font-bold">لا توجد أكواد تعريفية إضافية مسجلة بعد</p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        أدخل كوداً فردياً أو استخدم خيار "لصق أو استيراد جماعي" لإدخال أكثر من 100 كود فوراً
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="max-h-56 overflow-y-auto p-2 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                      <div className="flex flex-wrap gap-1.5">
+                        {editIdentificationCodes
+                          .filter(c => !codesFilterQuery.trim() || c.toLowerCase().includes(codesFilterQuery.toLowerCase().trim()))
+                          .map((code, idx) => (
+                            <div
+                              key={code + idx}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 text-xs shadow-2xs group hover:border-blue-400 transition-all"
+                            >
+                              <span className="text-[9px] text-slate-400 font-mono">#{idx + 1}</span>
+                              <span className="font-mono font-bold">{code}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyCode(code)}
+                                title="نسخ الكود"
+                                className="p-0.5 hover:text-blue-500 text-slate-400 transition-colors"
+                              >
+                                <Copy className="w-3 h-3" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteCode(code)}
+                                title="حذف الكود"
+                                className="p-0.5 hover:text-rose-500 text-slate-400 transition-colors"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ))}
+                      </div>
+                      {codesFilterQuery && (
+                        <div className="text-[10px] text-slate-400 text-start pt-1">
+                          تمت تصفية النتائج للبحث عن: "{codesFilterQuery}"
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {copiedCode && (
+                    <div className="text-center text-[11px] text-emerald-600 font-bold animate-in fade-in">
+                      تم نسخ الكود ({copiedCode}) إلى الحافظة بنجاح
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
 
-            <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-100 dark:border-slate-800 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setEditingProduct(null)}
-                className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold"
-              >
-                إلغاء
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveProductWholesale}
-                className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold shadow-md shadow-amber-500/20"
-              >
-                حفظ التعديلات
-              </button>
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2 shrink-0">
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                إجمالي الأكواد التعريفية: <strong className="text-slate-800 dark:text-slate-200 font-mono">{editIdentificationCodes.length}</strong>
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingProduct(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold hover:bg-slate-300 transition-colors"
+                >
+                  إلغاء
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveProductWholesale}
+                  className="px-6 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold shadow-md shadow-amber-500/20 active:scale-95 transition-all"
+                >
+                  حفظ التعديلات والأكواد
+                </button>
+              </div>
             </div>
           </div>
         </div>

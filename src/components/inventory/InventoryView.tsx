@@ -308,7 +308,12 @@ export const InventoryView: React.FC = () => {
                           {product.nameAr}
                         </td>
                         <td className="py-3 px-3 font-mono text-slate-500">
-                          {product.barcode}
+                          <div>{product.barcode}</div>
+                          {product.identificationCodes && product.identificationCodes.length > 0 && (
+                            <span className="inline-block mt-0.5 px-1.5 py-0.5 rounded text-[10px] bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900">
+                              {product.identificationCodes.length} كود إضافي
+                            </span>
+                          )}
                         </td>
                         <td className="py-3 px-3 text-center font-mono font-bold text-sm">
                           {product.stock} {product.unit}

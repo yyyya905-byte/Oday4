@@ -24,7 +24,9 @@ import {
   TrendingUp,
   AlertTriangle,
   Barcode as BarcodeIcon,
-  Printer
+  Printer,
+  ListPlus,
+  Hash
 } from 'lucide-react';
 import { BarcodeDesignerModal } from '../barcode/BarcodeDesignerModal';
 import { generateBarcodeSvg, generateRandomEan13 } from '../../utils/barcodeUtils';
@@ -81,6 +83,12 @@ export const ProductsView: React.FC = () => {
   const [image, setImage] = useState('');
   const [isFavorite, setIsFavorite] = useState(false);
 
+  // Identification codes (supporting 100+ codes per product for wholesale / retail)
+  const [identificationCodes, setIdentificationCodes] = useState<string[]>([]);
+  const [newCodeInput, setNewCodeInput] = useState<string>('');
+  const [bulkCodesInput, setBulkCodesInput] = useState<string>('');
+  const [showBulkCodesBox, setShowBulkCodesBox] = useState<boolean>(false);
+
   // Currency label
   const currencySymbol = settings.currency.symbolNative || settings.currency.symbol;
   const currencyCode = settings.currency.code;
@@ -108,6 +116,10 @@ export const ProductsView: React.FC = () => {
     setUnit('قطعة');
     setImage('https://images.unsplash.com/photo-1544816155-12df9643f363?w=500&auto=format&fit=crop&q=60');
     setIsFavorite(false);
+    setIdentificationCodes([]);
+    setNewCodeInput('');
+    setBulkCodesInput('');
+    setShowBulkCodesBox(false);
     setIsProductModalOpen(true);
   };
 
@@ -130,6 +142,10 @@ export const ProductsView: React.FC = () => {
     setUnit(product.unit);
     setImage(product.image || '');
     setIsFavorite(product.isFavorite || false);
+    setIdentificationCodes(product.identificationCodes ? [...product.identificationCodes] : []);
+    setNewCodeInput('');
+    setBulkCodesInput('');
+    setShowBulkCodesBox(false);
     setIsProductModalOpen(true);
   };
 
@@ -153,6 +169,7 @@ export const ProductsView: React.FC = () => {
       wholesaleUnit: wholesaleUnit || 'كرتونة',
       wholesaleUnitMultiplier: Number(wholesaleUnitMultiplier) || 1,
       tradeType,
+      identificationCodes,
       stock: Number(stock),
       minStock: Number(minStock),
       unit: unit || 'قطعة',
@@ -199,7 +216,8 @@ export const ProductsView: React.FC = () => {
         const matchesName = p.nameAr.toLowerCase().includes(query) || p.nameEn.toLowerCase().includes(query);
         const matchesBarcode = p.barcode.toLowerCase().includes(query);
         const matchesSku = p.sku.toLowerCase().includes(query);
-        if (!matchesName && !matchesBarcode && !matchesSku) return false;
+        const matchesIdentification = p.identificationCodes?.some(c => c.toLowerCase().includes(query));
+        if (!matchesName && !matchesBarcode && !matchesSku && !matchesIdentification) return false;
       }
       return true;
     });
@@ -602,6 +620,114 @@ export const ProductsView: React.FC = () => {
                     className="w-full text-xs font-mono font-bold px-3 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-amber-500"
                   />
                 </div>
+              </div>
+
+              {/* Identification Codes Section (Supports 100+ codes per product for wholesale / retail) */}
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                    <BarcodeIcon className="w-3.5 h-3.5 text-blue-500" />
+                    <span>الأكواد والباركودات التعريفية الإضافية (يدعم أكثر من 100 كود تعريفي):</span>
+                  </label>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300">
+                    {identificationCodes.length} كود مسجل
+                  </span>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="أدخل كود تعريفي إضافي أو باركود كرتونة..."
+                    value={newCodeInput}
+                    onChange={e => setNewCodeInput(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        const trimmed = newCodeInput.trim();
+                        if (trimmed && !identificationCodes.includes(trimmed)) {
+                          setIdentificationCodes(prev => [trimmed, ...prev]);
+                          setNewCodeInput('');
+                        }
+                      }
+                    }}
+                    className="flex-1 text-xs font-mono px-3 py-2 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const trimmed = newCodeInput.trim();
+                      if (trimmed && !identificationCodes.includes(trimmed)) {
+                        setIdentificationCodes(prev => [trimmed, ...prev]);
+                        setNewCodeInput('');
+                      }
+                    }}
+                    className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs cursor-pointer"
+                  >
+                    إضافة
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowBulkCodesBox(!showBulkCodesBox)}
+                    className="px-3 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs flex items-center gap-1 cursor-pointer"
+                  >
+                    <ListPlus className="w-3.5 h-3.5" />
+                    <span>لصق مجمع</span>
+                  </button>
+                </div>
+
+                {showBulkCodesBox && (
+                  <div className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 space-y-2">
+                    <textarea
+                      rows={3}
+                      value={bulkCodesInput}
+                      onChange={e => setBulkCodesInput(e.target.value)}
+                      placeholder="الصق هنا أكثر من 100 كود (كل كود بسطر أو مفصول بفواصل)..."
+                      className="w-full text-xs font-mono p-2 bg-white dark:bg-slate-900 rounded-lg border border-amber-300 dark:border-amber-800"
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const tokens = bulkCodesInput.split(/[\r\n,\t;]+/).map(t => t.trim()).filter(Boolean);
+                          const seen = new Set(identificationCodes);
+                          const added: string[] = [];
+                          for (const tok of tokens) {
+                            if (!seen.has(tok)) {
+                              seen.add(tok);
+                              added.push(tok);
+                            }
+                          }
+                          setIdentificationCodes(prev => [...added, ...prev]);
+                          setBulkCodesInput('');
+                          setShowBulkCodesBox(false);
+                        }}
+                        className="px-3 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold cursor-pointer"
+                      >
+                        إدراج الأكواد
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {identificationCodes.length > 0 && (
+                  <div className="max-h-28 overflow-y-auto p-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex flex-wrap gap-1">
+                    {identificationCodes.map(code => (
+                      <span
+                        key={code}
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[11px] font-mono border border-slate-200 dark:border-slate-700"
+                      >
+                        <span>{code}</span>
+                        <button
+                          type="button"
+                          onClick={() => setIdentificationCodes(prev => prev.filter(c => c !== code))}
+                          className="text-slate-400 hover:text-rose-500 cursor-pointer"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* PRICING SECTION WITH CLEAR CURRENCY BADGES */}

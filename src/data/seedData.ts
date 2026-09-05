@@ -346,6 +346,14 @@ export const initialProducts: Product[] = [
     stock: 140,
     minStock: 25,
     unit: 'عبوة',
+    identificationCodes: [
+      'CRTN-WTR-2401',
+      'CRTN-WTR-2402',
+      'CRTN-WTR-2403',
+      '6210050019901',
+      '6210050019902',
+      'BATCH-WTR-0926'
+    ],
     image: 'https://images.unsplash.com/photo-1548839140-29a749e1bc4e?w=400&q=80',
     isFavorite: true,
     status: 'active',

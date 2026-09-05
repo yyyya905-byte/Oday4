@@ -124,11 +124,36 @@ export const POSView: React.FC = () => {
         const matchName = p.nameAr.toLowerCase().includes(q) || p.nameEn.toLowerCase().includes(q);
         const matchBarcode = p.barcode.includes(q);
         const matchSku = p.sku.toLowerCase().includes(q);
-        return matchName || matchBarcode || matchSku;
+        const matchIdentification = p.identificationCodes?.some(c => c.toLowerCase().includes(q));
+        return matchName || matchBarcode || matchSku || matchIdentification;
       }
       return true;
     });
   }, [products, selectedCategory, showFavoritesOnly, searchQuery]);
+
+  // Handle direct Enter on search input (e.g. from physical barcode scanner)
+  const handleSearchInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const q = searchQuery.trim().toLowerCase();
+      if (!q) return;
+      const exactMatch = products.find(
+        p =>
+          p.barcode.toLowerCase() === q ||
+          p.sku.toLowerCase() === q ||
+          p.identificationCodes?.some(c => c.toLowerCase() === q)
+      );
+      if (exactMatch) {
+        addToCart(exactMatch);
+        setSearchQuery('');
+        return;
+      }
+      if (filteredProducts.length === 1) {
+        addToCart(filteredProducts[0]);
+        setSearchQuery('');
+      }
+    }
+  };
 
   // Cart Calculations
   const subtotal = cart.reduce((sum, it) => sum + (it.unitPrice * it.quantity), 0);
@@ -293,6 +318,7 @@ export const POSView: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
+              onKeyDown={handleSearchInputKeyDown}
               placeholder={businessMode === 'restaurant' 
                 ? (language === 'ar' ? 'بحث عن وجبة، مشروب، حلى، أو كود الصنف...' : 'Search meal, drink, dessert...')
                 : businessMode === 'wholesale'

@@ -24,7 +24,12 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     const clean = code.trim();
     if (!clean) return;
 
-    const found = products.find(p => p.barcode === clean || p.sku.toLowerCase() === clean.toLowerCase());
+    const found = products.find(
+      p =>
+        p.barcode === clean ||
+        p.sku.toLowerCase() === clean.toLowerCase() ||
+        p.identificationCodes?.some(c => c.toLowerCase() === clean.toLowerCase())
+    );
     if (found) {
       soundEffects.playBeep();
       addToCart(found);

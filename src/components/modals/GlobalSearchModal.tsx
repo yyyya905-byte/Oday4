@@ -51,8 +51,9 @@ export const GlobalSearchModal: React.FC = () => {
           p.nameAr.toLowerCase().includes(clean) ||
           p.nameEn.toLowerCase().includes(clean) ||
           p.barcode.includes(clean) ||
-          p.sku.toLowerCase().includes(clean)
-      ).slice(0, 5)
+          p.sku.toLowerCase().includes(clean) ||
+          p.identificationCodes?.some(c => c.toLowerCase().includes(clean))
+      ).slice(0, 6)
     : [];
 
   const filteredCustomers = clean
