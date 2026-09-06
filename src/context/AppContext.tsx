@@ -55,6 +55,7 @@ import {
   sendWhatsAppDebtMessage,
   checkAndSendPeriodicDebtReminders
 } from '../services/debtCollectionService';
+import { indexedDbService } from '../services/indexedDbService';
 
 
 export interface AppNotification {
@@ -241,6 +242,14 @@ interface AppContextType {
   pingDevice: (deviceId: string) => Promise<void>;
   dedicatedDeviceRole: DeviceRole | null;
   setDedicatedDeviceRole: (role: DeviceRole | null) => void;
+
+  // Cross-Device Data Transfer & Offline Sync
+  isDataTransferModalOpen: boolean;
+  setIsDataTransferModalOpen: (open: boolean) => void;
+  offlineQueueCount: number;
+  isSyncingOffline: boolean;
+  syncOfflineQueueNow: () => Promise<void>;
+  refreshOfflineQueueCount: () => Promise<void>;
 
   // Wholesale Warehouses & Transport Fleet Hub
   wholesaleWarehouses: WholesaleWarehouse[];
@@ -1553,6 +1562,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSalesState(updatedSales);
     localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(updatedSales));
 
+    // Offline caching & queuing
+    try {
+      indexedDbService.cacheAllData({ sales: updatedSales });
+      if (!navigator.onLine) {
+        indexedDbService.enqueueOfflineAction('CREATE_SALE', newSale);
+        setOfflineQueueCount(prev => prev + 1);
+      }
+    } catch {}
+
     // 4. Log Audit
     logAudit('عملية بيع جديدة', `فاتورة ${invoiceNum} (${computedTradeType === 'wholesale' ? 'جملة' : 'مفرق'}) بقيمة ${grandTotal} (${saleData.paymentMethod}) - الكاشير: ${currentUser.name}`, 'low');
 
@@ -2344,6 +2362,94 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [masterPairingPin, setMasterPairingPin] = useState<string>("849210");
   const [isPairingModalOpen, setIsPairingModalOpen] = useState<boolean>(false);
+  const [isDataTransferModalOpen, setIsDataTransferModalOpen] = useState<boolean>(false);
+  const [offlineQueueCount, setOfflineQueueCount] = useState<number>(0);
+  const [isSyncingOffline, setIsSyncingOffline] = useState<boolean>(false);
+
+  // Refresh offline pending mutations count
+  const refreshOfflineQueueCount = async () => {
+    try {
+      const actions = await indexedDbService.getPendingActions();
+      setOfflineQueueCount(actions.length);
+    } catch {
+      setOfflineQueueCount(0);
+    }
+  };
+
+  // Synchronize offline mutations to server and update local cache
+  const syncOfflineQueueNow = async () => {
+    if (isSyncingOffline) return;
+    setIsSyncingOffline(true);
+    try {
+      const result = await indexedDbService.syncOfflineQueueToServer();
+      await refreshOfflineQueueCount();
+      if (result.syncedCount > 0) {
+        notify(
+          'تمت المزامنة الخلفية بنجاح',
+          `تم إرسال ومزامنة ${result.syncedCount} عملية محددة تم تسجيلها أثناء انقطاع الإنترنت بنجاح.`,
+          'success'
+        );
+      }
+    } catch (err: any) {
+      console.warn('Sync offline queue error:', err);
+    } finally {
+      setIsSyncingOffline(false);
+    }
+  };
+
+  // 1. Initial IndexedDB cache and sync check
+  useEffect(() => {
+    const initDb = async () => {
+      try {
+        await indexedDbService.cacheAllData({
+          products,
+          categories,
+          customers,
+          sales,
+          settings
+        });
+        await refreshOfflineQueueCount();
+      } catch (e) {
+        console.warn('IndexedDB initial sync error:', e);
+      }
+    };
+    initDb();
+  }, []);
+
+  // 2. Debounced auto-cache of POS state to IndexedDB on mutations
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      indexedDbService.cacheAllData({
+        products,
+        categories,
+        customers,
+        sales,
+        settings
+      }).catch(() => {});
+    }, 1200);
+    return () => clearTimeout(timer);
+  }, [products, categories, customers, sales, settings]);
+
+  // 3. Online/Offline network event listeners with auto-sync
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      notify('عادت الشبكة', 'تمت استعادة الاتصال بالإنترنت، جاري مزامنة العمليات المحفوظة أوفلاين تلقائياً...', 'info');
+      syncOfflineQueueNow();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      notify('وضع عدم الاتصال', 'يعمل النظام أوفلاين بكامل طاقته عبر تقنية IndexedDB والتخزين المؤقت.', 'warning');
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   const [kitchenOrders, setKitchenOrders] = useState<KitchenOrder[]>([
     {
@@ -2922,6 +3028,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         pingDevice,
         dedicatedDeviceRole,
         setDedicatedDeviceRole,
+        isDataTransferModalOpen,
+        setIsDataTransferModalOpen,
+        offlineQueueCount,
+        isSyncingOffline,
+        syncOfflineQueueNow,
+        refreshOfflineQueueCount,
         wholesaleWarehouses,
         deliveryVehicles,
         vehicleManifests,

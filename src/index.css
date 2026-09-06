@@ -1,15 +1,26 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   :root {
     --font-cairo: 'Cairo', 'Plus Jakarta Sans', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
+    --bg-light-canvas: #f8fafc;
+    --border-light-subtle: #e2e8f0;
   }
 
   body {
     font-family: var(--font-cairo);
     -webkit-tap-highlight-color: transparent;
     user-select: none;
+    background-color: var(--bg-light-canvas);
+    color: #0f172a;
+  }
+
+  .dark body {
+    background-color: #020617;
+    color: #f8fafc;
   }
 
   input, textarea, [contenteditable="true"] {
@@ -49,7 +60,7 @@
   scrollbar-width: none;
 }
 
-/* Print Stylesheet for Receipts & Invoices */
+/* Print Stylesheet for Receipts, Invoices & Label Alignment Calibration */
 @media print {
   @page {
     margin: 0;
@@ -60,19 +71,25 @@
     visibility: hidden;
   }
 
-  #printable-receipt, #printable-receipt * {
+  #printable-receipt, #printable-receipt *,
+  #printable-calibration-sheet, #printable-calibration-sheet *,
+  #printable-test-label, #printable-test-label * {
     visibility: visible;
   }
 
-  #printable-receipt {
+  #printable-receipt,
+  #printable-calibration-sheet,
+  #printable-test-label {
     position: absolute;
     left: 0;
     top: 0;
     width: 100%;
     margin: 0;
-    padding: 10px;
+    padding: 6px;
     background: #ffffff !important;
     color: #000000 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   .no-print {

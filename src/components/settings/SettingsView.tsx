@@ -38,11 +38,13 @@ import {
   Eye,
   EyeOff,
   Layers,
-  HeartHandshake
+  HeartHandshake,
+  Printer
 } from 'lucide-react';
 import { soundEffects } from '../../services/audio';
 import { GoogleDriveBackupSection } from '../backup/GoogleDriveBackupSection';
 import { WhatsAppDebtAutomationDashboard } from '../debts/WhatsAppDebtAutomationDashboard';
+import { PrintSettingsPanel } from './PrintSettingsPanel';
 import { CURRENCY_PRESETS, fetchLiveSyrianLiraRates } from '../../utils/currencyUtils';
 import { testWhatsAppCloudApiConnection } from '../../services/debtCollectionService';
 
@@ -68,7 +70,7 @@ export const SettingsView: React.FC = () => {
     isNightTime
   } = useApp();
 
-  const [activeSubTab, setActiveSubTab] = useState<'appearance' | 'currency' | 'google_drive' | 'general' | 'retail_pos' | 'wholesale_depot' | 'debt_whatsapp'>('appearance');
+  const [activeSubTab, setActiveSubTab] = useState<'appearance' | 'currency' | 'google_drive' | 'general' | 'retail_pos' | 'wholesale_depot' | 'debt_whatsapp' | 'printer'>('appearance');
   const [formData, setFormData] = useState({ ...settings });
   const [fileInputKey, setFileInputKey] = useState(Date.now());
 
@@ -256,7 +258,7 @@ export const SettingsView: React.FC = () => {
   };
 
   return (
-    <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-6 bg-slate-50/50 dark:bg-slate-950">
+    <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-6 bg-slate-50 dark:bg-slate-950">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -333,6 +335,22 @@ export const SettingsView: React.FC = () => {
         >
           <ShoppingBag className="w-4 h-4" />
           <span>إعدادات قسم المفرق والتجزئة (POS)</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveSubTab('printer')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-black transition-all shrink-0 cursor-pointer ${
+            activeSubTab === 'printer'
+              ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+          }`}
+        >
+          <Printer className="w-4 h-4 text-amber-500" />
+          <span>الطباعة ومعايرة الملصقات</span>
+          <span className="px-1.5 py-0.2 rounded-full text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-mono font-bold">
+            {formData.printPaperSize || '80mm'}
+          </span>
         </button>
 
         <button
@@ -819,7 +837,7 @@ export const SettingsView: React.FC = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  مقاس ورق الطابعة الحرارية
+                  مقاس ورق الطابعة الحرارية والملصقات
                 </label>
                 <select
                   value={formData.printPaperSize}
@@ -828,7 +846,11 @@ export const SettingsView: React.FC = () => {
                 >
                   <option value="80mm">طابعة حرارية عريضة (80mm - كاشير قياسي)</option>
                   <option value="58mm">طابعة حرارية مدمجة صغيرة (58mm - فواتير مصغرة)</option>
-                  <option value="a4">صفحة كاملة (A4 - فواتير رسمية)</option>
+                  <option value="76mm">طابعة حرارية وسط (76mm - مطابخ وطلبات)</option>
+                  <option value="a4">صفحة كاملة (A4 - فواتير رسمية وجملة)</option>
+                  <option value="label_50x30">ملصق باركود ورفوف (50×30 مم)</option>
+                  <option value="label_40x25">ملصق أسعار صغير (40×25 مم)</option>
+                  <option value="label_60x40">ملصق طرود وشحن جملة (60×40 مم)</option>
                 </select>
               </div>
 
@@ -861,6 +883,26 @@ export const SettingsView: React.FC = () => {
                   placeholder="شكراً لزيارتكم • البضاعة المباعة ترد وتستبدل خلال 3 أيام"
                   className="w-full text-xs px-3 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none"
                 />
+              </div>
+
+              {/* Quick Jump to Calibration Studio */}
+              <div className="sm:col-span-2 p-3 bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/20 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Printer className="w-3.5 h-3.5 text-amber-500" />
+                    <span>استوديو معايرة الهوامش والطباعة المتقدمة (Thermal & Label Calibration)</span>
+                  </span>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    ضبط الهوامش بالمليمتر، أوامر قطع الورق وفتح الدرج، واختبار محاذاة ملصقات الباركود على مسطرة حقيقية
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setActiveSubTab('printer')}
+                  className="px-3.5 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-black rounded-xl transition-all shadow-xs shrink-0 cursor-pointer"
+                >
+                  فتح استوديو المعايرة
+                </button>
               </div>
             </div>
           </div>
@@ -1519,6 +1561,11 @@ export const SettingsView: React.FC = () => {
             </div>
           </form>
         </div>
+      )}
+
+      {/* TAB: Printer & Label Alignment Studio */}
+      {activeSubTab === 'printer' && (
+        <PrintSettingsPanel />
       )}
     </div>
   );

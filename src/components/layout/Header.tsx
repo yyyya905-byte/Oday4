@@ -24,7 +24,10 @@ import {
   Cloud,
   DollarSign,
   Barcode as BarcodeIcon,
-  Coins
+  Coins,
+  ArrowLeftRight,
+  Database,
+  RefreshCw
 } from 'lucide-react';
 import { PinSwitchModal } from '../modals/PinSwitchModal';
 import { ExchangeBulletinBar } from '../currency/ExchangeBulletinBar';
@@ -50,7 +53,11 @@ export const Header: React.FC = () => {
     settings,
     businessMode,
     setIsModeModalOpen,
-    devices
+    devices,
+    offlineQueueCount,
+    isSyncingOffline,
+    syncOfflineQueueNow,
+    setIsDataTransferModalOpen
   } = useApp();
 
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
@@ -188,6 +195,17 @@ export const Header: React.FC = () => {
           </span>
         </button>
 
+        {/* Cross-Device Data Transfer Button */}
+        <button
+          id="btn-header-data-transfer"
+          onClick={() => setIsDataTransferModalOpen(true)}
+          className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60 text-xs font-bold transition-all cursor-pointer"
+          title="نقل واستلام البيانات بين الأجهزة عبر كود الربط"
+        >
+          <ArrowLeftRight className="w-3.5 h-3.5 text-indigo-500" />
+          <span className="hidden lg:inline">نقل بكود</span>
+        </button>
+
         {/* Quick Google Drive Backup Hub Button */}
         <button
           id="btn-header-gdrive-sync"
@@ -210,24 +228,46 @@ export const Header: React.FC = () => {
           <span className="hidden md:inline">{language === 'ar' ? 'الذكاء الاصطناعي' : 'Gemini AI'}</span>
         </button>
 
-        {/* Network Online/Offline Status */}
+        {/* Network Online/Offline & Sync Status */}
         <div 
+          onClick={() => {
+            if (offlineQueueCount > 0 && isOnline) {
+              syncOfflineQueueNow();
+            }
+          }}
           className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
             isOnline 
               ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60'
               : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60'
-          }`}
-          title={isOnline ? t('online') : t('offline')}
+          } ${offlineQueueCount > 0 && isOnline ? 'cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/60' : ''}`}
+          title={
+            !isOnline 
+              ? 'أوفلاين — يتم تخزين العمليات محلياً في IndexedDB' 
+              : offlineQueueCount > 0 
+                ? `هناك ${offlineQueueCount} عملية معلقة، انقر للمزامنة الفورية مع الخادم` 
+                : t('online')
+          }
         >
           {isOnline ? (
             <>
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span className="hidden lg:inline text-[11px]">{t('online')}</span>
+              {offlineQueueCount > 0 && (
+                <span className="flex items-center gap-1 bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full ms-1">
+                  <RefreshCw className={`w-2.5 h-2.5 ${isSyncingOffline ? 'animate-spin' : ''}`} />
+                  {offlineQueueCount}
+                </span>
+              )}
             </>
           ) : (
             <>
               <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-              <span className="hidden lg:inline text-[11px]">{t('offline')}</span>
+              <span className="hidden lg:inline text-[11px]">{t('offline')} (IndexedDB)</span>
+              {offlineQueueCount > 0 && (
+                <span className="bg-amber-600 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full ms-1">
+                  {offlineQueueCount}
+                </span>
+              )}
             </>
           )}
         </div>

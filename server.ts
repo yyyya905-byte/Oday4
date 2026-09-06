@@ -699,6 +699,178 @@ app.post("/api/sync/kitchen-order-item-status", (req, res) => {
 });
 
 // ==========================================
+// 5.5. Offline Batch Sync & Device Data Transfer Hub
+// ==========================================
+
+interface ServerDeviceTransfer {
+  transferCode: string;
+  senderDeviceId?: string;
+  senderDeviceName: string;
+  createdAt: string;
+  expiresAt: string;
+  transferType: 'all' | 'products' | 'customers' | 'sales' | 'settings';
+  summary: {
+    productsCount: number;
+    categoriesCount: number;
+    customersCount: number;
+    salesCount: number;
+    hasSettings: boolean;
+  };
+  data: any;
+  notes?: string;
+}
+
+// In-memory cross-device transfer storage
+const activeDeviceTransfers = new Map<string, ServerDeviceTransfer>();
+
+// 1. Process batch of offline operations synced when connection restored
+app.post("/api/sync/offline-batch", (req, res) => {
+  try {
+    const { items } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.json({ success: true, processedCount: 0, message: "لا توجد عمليات معلقة للمزامنة" });
+    }
+
+    console.log(`[Offline Sync Engine] Received ${items.length} queued offline mutations`);
+
+    let salesCount = 0;
+    let debtCount = 0;
+    let stockCount = 0;
+
+    items.forEach((item: any) => {
+      if (item.actionType === 'CREATE_SALE') salesCount++;
+      if (item.actionType === 'RECORD_DEBT_PAYMENT') debtCount++;
+      if (item.actionType === 'ADJUST_STOCK') stockCount++;
+    });
+
+    // Broadcast sync event to all active terminals so other screens refresh if needed
+    broadcastSseEvent('OFFLINE_DATA_SYNCED', {
+      totalItems: items.length,
+      salesCount,
+      debtCount,
+      stockCount,
+      timestamp: new Date().toISOString(),
+    });
+
+    res.json({
+      success: true,
+      processedCount: items.length,
+      details: { salesCount, debtCount, stockCount },
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error: any) {
+    console.error("[Offline Sync Engine] Batch error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 2. Stage a data package for cross-device transfer with a 6-digit pairing code
+app.post("/api/devices/transfer/create", (req, res) => {
+  try {
+    const {
+      transferCode,
+      senderDeviceId,
+      senderDeviceName,
+      transferType = 'all',
+      summary = {},
+      data = {},
+      notes = '',
+    } = req.body;
+
+    // Standardize 6-digit numeric or alphanumeric PIN
+    const code = (transferCode || Math.floor(100000 + Math.random() * 900000).toString()).trim().toUpperCase();
+
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + 2 * 60 * 60 * 1000).toISOString(); // 2 hours validity
+
+    const pkg: ServerDeviceTransfer = {
+      transferCode: code,
+      senderDeviceId,
+      senderDeviceName: senderDeviceName || "كاشير كيان المركزي",
+      createdAt: now.toISOString(),
+      expiresAt,
+      transferType,
+      summary: {
+        productsCount: summary.productsCount || (data.products?.length ?? 0),
+        categoriesCount: summary.categoriesCount || (data.categories?.length ?? 0),
+        customersCount: summary.customersCount || (data.customers?.length ?? 0),
+        salesCount: summary.salesCount || (data.sales?.length ?? 0),
+        hasSettings: Boolean(summary.hasSettings || data.settings),
+      },
+      data,
+      notes,
+    };
+
+    activeDeviceTransfers.set(code, pkg);
+
+    // Broadcast event on SSE so nearby listening devices detect the transfer offer
+    broadcastSseEvent('DATA_TRANSFER_OFFERED', {
+      transferCode: code,
+      senderDeviceName: pkg.senderDeviceName,
+      summary: pkg.summary,
+      timestamp: now.toISOString(),
+    });
+
+    console.log(`[Device Transfer] Data package staged under code: ${code} (${pkg.summary.productsCount} products, ${pkg.summary.customersCount} customers)`);
+
+    res.json({
+      success: true,
+      transferCode: code,
+      expiresAt,
+      summary: pkg.summary,
+      message: `تم إنشاء حزمة نقل البيانات برمز الربط: ${code}`,
+    });
+  } catch (error: any) {
+    console.error("[Device Transfer Create Error]:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// 3. Fetch data package on target device using the 6-digit pairing code
+app.get("/api/devices/transfer/fetch/:code", (req, res) => {
+  const code = req.params.code.trim().toUpperCase();
+  const pkg = activeDeviceTransfers.get(code);
+
+  if (!pkg) {
+    return res.status(404).json({
+      success: false,
+      error: "رمز الربط غير موجود أو انتهت صلاحيته. يرجى التأكد من الرمز المعروض على الجهاز المرسل.",
+    });
+  }
+
+  // Check expiration
+  if (new Date() > new Date(pkg.expiresAt)) {
+    activeDeviceTransfers.delete(code);
+    return res.status(410).json({
+      success: false,
+      error: "انتهت صلاحية حزمة النقل. يرجى إنشاء رمز نقل جديد من الجهاز المرسل.",
+    });
+  }
+
+  res.json({
+    success: true,
+    package: pkg,
+  });
+});
+
+// 4. Confirm data receipt on target device and notify sender
+app.post("/api/devices/transfer/confirm", (req, res) => {
+  const { transferCode, receiverDeviceName } = req.body;
+  const code = (transferCode || '').trim().toUpperCase();
+
+  broadcastSseEvent('DATA_TRANSFER_CONFIRMED', {
+    transferCode: code,
+    receiverDeviceName: receiverDeviceName || 'جهاز فرعي مستلم',
+    timestamp: new Date().toISOString(),
+  });
+
+  res.json({
+    success: true,
+    message: "تم تأكيد استلام البيانات بنجاح",
+  });
+});
+
+// ==========================================
 // 6. WhatsApp Business Debt Notification Dispatcher
 // ==========================================
 app.post("/api/whatsapp/send-debt-message", async (req, res) => {

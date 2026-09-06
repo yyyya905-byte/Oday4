@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/layout/Header';
 import { Sidebar } from './components/layout/Sidebar';
@@ -23,10 +23,12 @@ import { KitchenDisplayView } from './components/devices/KitchenDisplayView';
 import { CustomerFacingDisplayView } from './components/devices/CustomerFacingDisplayView';
 import { MobileWaiterView } from './components/devices/MobileWaiterView';
 import { MobileStockScannerView } from './components/devices/MobileStockScannerView';
+import { DeviceDataTransferModal } from './components/devices/DeviceDataTransferModal';
 import { PinSwitchModal } from './components/modals/PinSwitchModal';
 import { GlobalSearchModal } from './components/modals/GlobalSearchModal';
 import { ModeSelectionModal } from './components/modals/ModeSelectionModal';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { WifiOff, RefreshCw, ArrowLeftRight, Database, CheckCircle2 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const { 
@@ -38,8 +40,42 @@ const AppContent: React.FC = () => {
     isModeModalOpen,
     setIsModeModalOpen,
     dedicatedDeviceRole,
-    setDedicatedDeviceRole
+    setDedicatedDeviceRole,
+    isDataTransferModalOpen,
+    setIsDataTransferModalOpen,
+    offlineQueueCount,
+    isSyncingOffline,
+    syncOfflineQueueNow,
+    isOnline
   } = useApp();
+
+  // PWA Service Worker Registration & Background Sync Listener
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then((registration) => {
+            console.log('[PWA SW] Successfully registered with scope:', registration.scope);
+          })
+          .catch((error) => {
+            console.warn('[PWA SW] Registration failed:', error);
+          });
+      });
+
+      // Listen for background sync triggers from Service Worker
+      const handleSwMessage = (event: MessageEvent) => {
+        if (event.data && event.data.type === 'TRIGGER_OFFLINE_SYNC') {
+          console.log('[App] Received background sync trigger from Service Worker');
+          syncOfflineQueueNow();
+        }
+      };
+
+      navigator.serviceWorker.addEventListener('message', handleSwMessage);
+      return () => {
+        navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+      };
+    }
+  }, [syncOfflineQueueNow]);
 
   // If this device was paired or selected as a dedicated terminal
   if (dedicatedDeviceRole === 'kitchen_display') {
@@ -107,7 +143,7 @@ const AppContent: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-slate-100 dark:bg-slate-950 font-sans antialiased text-slate-900 dark:text-slate-100 select-none">
+    <div className="flex h-screen w-screen overflow-hidden bg-slate-50 dark:bg-slate-950 font-sans antialiased text-slate-900 dark:text-slate-100 select-none">
       {/* Sidebar for Desktop / Tablet */}
       <Sidebar />
 
@@ -137,6 +173,72 @@ const AppContent: React.FC = () => {
         isOpen={isModeModalOpen}
         onClose={() => setIsModeModalOpen(false)}
       />
+
+      <DeviceDataTransferModal
+        isOpen={isDataTransferModalOpen}
+        onClose={() => setIsDataTransferModalOpen(false)}
+      />
+
+      {/* Floating Offline Sync & Storage Status Banner */}
+      {(!isOnline || offlineQueueCount > 0) && (
+        <aside
+          aria-label="حالة الاتصال والمزامنة"
+          className="fixed bottom-18 md:bottom-5 start-4 z-40 flex items-center gap-3 py-2 px-3.5 rounded-2xl bg-slate-900/90 dark:bg-slate-800/95 text-white backdrop-blur-md shadow-xl border border-slate-700/80 text-xs animate-in slide-in-from-bottom-3 duration-300"
+        >
+          <div className="flex items-center gap-2">
+            {!isOnline ? (
+              <div className="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping" />
+            ) : (
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+            )}
+            <div>
+              <div className="font-bold flex items-center gap-1.5">
+                {!isOnline ? (
+                  <>
+                    <WifiOff className="w-3.5 h-3.5 text-amber-400" />
+                    <span>وضع أوفلاين (IndexedDB نشط)</span>
+                  </>
+                ) : (
+                  <>
+                    <Database className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>متصل — عمليات قيد المزامنة</span>
+                  </>
+                )}
+              </div>
+              {offlineQueueCount > 0 && (
+                <div className="text-[11px] text-slate-300">
+                  {offlineQueueCount} عملية معلقة بانتظار المزامنة مع الخادم
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 border-s border-slate-700 ps-2.5">
+            {isOnline && (
+              <button
+                type="button"
+                onClick={syncOfflineQueueNow}
+                disabled={isSyncingOffline}
+                className="flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
+                title="مزامنة العمليات المعلقة الآن"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncingOffline ? 'animate-spin' : ''}`} />
+                <span>{isSyncingOffline ? 'جارِ المزامنة...' : 'مزامنة الآن'}</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setIsDataTransferModalOpen(true)}
+              className="flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
+              title="نقل البيانات إلى جهاز آخر عبر كود الربط"
+            >
+              <ArrowLeftRight className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">نقل بكود</span>
+            </button>
+          </div>
+        </aside>
+      )}
     </div>
   );
 };

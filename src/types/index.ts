@@ -372,6 +372,26 @@ export interface GoogleDriveBackupFile {
 
 export type ThemeMode = 'light' | 'dark' | 'auto_time' | 'system';
 
+export type PrintPaperSize = '80mm' | '58mm' | '76mm' | 'a4' | 'label_50x30' | 'label_40x25' | 'label_60x40';
+
+export interface LabelAlignmentConfig {
+  topMarginMm: number;
+  bottomMarginMm: number;
+  leftMarginMm: number;
+  rightMarginMm: number;
+  textAlign: 'center' | 'right' | 'left';
+  barcodeAlign: 'center' | 'right' | 'left';
+  gapOffsetMm: number;
+  fontScale: 'compact' | 'normal' | 'large';
+  density: 'normal' | 'high';
+  showStoreName: boolean;
+  showProductName: boolean;
+  showPrice: boolean;
+  showBarcode: boolean;
+  showSku: boolean;
+  showDate: boolean;
+}
+
 export interface StoreSettings {
   storeId: string;
   storeNameAr: string;
@@ -399,8 +419,19 @@ export interface StoreSettings {
   pointsRedeemRatio: number; // e.g., 100 Points = 10000 SYP (100 SYP per point)
   receiptHeader: string;
   receiptFooter: string;
-  printPaperSize: '80mm' | '58mm' | 'a4';
+  printPaperSize: PrintPaperSize;
   autoPrintOnSale: boolean;
+  autoPrintKitchenTicket?: boolean;
+  printCustomerAndMerchantCopies?: boolean;
+  printBarcodeOnReceipt?: boolean;
+  printExchangeRateOnReceipt?: boolean;
+  printStoreLogo?: boolean;
+  printTaxDetails?: boolean;
+  printCashierDetails?: boolean;
+  enableAutoCutter?: boolean;
+  enableCashDrawerKick?: boolean;
+  soundOnPrint?: boolean;
+  labelAlignment?: LabelAlignmentConfig;
   soundEffects: boolean;
   lowStockThreshold: number;
   offlineSyncEnabled: boolean;

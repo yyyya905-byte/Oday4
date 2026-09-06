@@ -27,7 +27,8 @@ import {
   Wifi,
   Layers,
   ArrowUpRight,
-  Maximize2
+  Maximize2,
+  ArrowLeftRight
 } from 'lucide-react';
 
 export const DevicesHubView: React.FC = () => {
@@ -43,7 +44,8 @@ export const DevicesHubView: React.FC = () => {
     products,
     notify,
     t, 
-    language 
+    language,
+    setIsDataTransferModalOpen
   } = useApp();
 
   const [isPairModalOpen, setIsPairModalOpen] = useState(false);
@@ -163,6 +165,16 @@ export const DevicesHubView: React.FC = () => {
             title={t('syncAllDevicesNow')}
           >
             <RefreshCw className="w-4 h-4" />
+          </button>
+
+          <button
+            id="btn-device-data-transfer"
+            onClick={() => setIsDataTransferModalOpen(true)}
+            className="py-2.5 px-3.5 rounded-2xl bg-indigo-50 dark:bg-indigo-950/70 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs"
+            title="نقل ومزامنة البيانات بين الأجهزة عبر كود الربط"
+          >
+            <ArrowLeftRight className="w-3.5 h-3.5 text-indigo-500" />
+            <span>نقل البيانات (كود الربط)</span>
           </button>
 
           <button
