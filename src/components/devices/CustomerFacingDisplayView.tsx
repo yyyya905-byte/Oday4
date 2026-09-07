@@ -11,7 +11,9 @@ import {
   Gift,
   Flame,
   CreditCard,
-  Smartphone
+  Smartphone,
+  KeyRound,
+  Radio
 } from 'lucide-react';
 import QRCode from 'qrcode';
 
@@ -22,15 +24,24 @@ export const CustomerFacingDisplayView: React.FC<{ onBackToMain?: () => void }> 
     formatCurrency, 
     settings, 
     language,
-    selectedCustomer 
+    selectedCustomer,
+    liveRemoteCart,
+    setIsConnectToCashierModalOpen
   } = useApp();
 
   const [paymentQr, setPaymentQr] = useState<string>('');
   const [promoSlide, setPromoSlide] = useState(0);
 
-  const subtotal = cart.reduce((acc, it) => acc + (it.total || 0), 0);
-  const total = Math.max(0, subtotal - (orderDiscount?.value || 0));
+  // Synchronize with remote cashier cart or use local cart
+  const effectiveCart = (cart && cart.length > 0) ? cart : (liveRemoteCart?.items || []);
+  const localSubtotal = cart.reduce((acc, it) => acc + (it.total || 0), 0);
+  const localTotal = Math.max(0, localSubtotal - (orderDiscount?.value || 0));
+
+  const subtotal = (cart && cart.length > 0) ? localSubtotal : (liveRemoteCart?.subtotal || 0);
+  const total = (cart && cart.length > 0) ? localTotal : (liveRemoteCart?.total || 0);
+  const discountVal = (cart && cart.length > 0) ? (orderDiscount?.value || 0) : (liveRemoteCart?.discount || 0);
   const pointsEarned = Math.floor(total / (settings?.pointsSpendRatio || 10000));
+  const activeCustomerName = selectedCustomer?.name || liveRemoteCart?.customerName || null;
 
   // Promotional slideshow items
   const promoOffers = [
@@ -105,25 +116,38 @@ export const CustomerFacingDisplayView: React.FC<{ onBackToMain?: () => void }> 
           </div>
         </div>
 
-        {/* Customer greeting or info */}
-        {selectedCustomer ? (
-          <div className="flex items-center gap-3 bg-slate-800/90 border border-slate-700 py-2 px-4 rounded-2xl">
-            <Award className="w-6 h-6 text-amber-400" />
-            <div>
-              <p className="text-xs text-slate-400">{language === 'ar' ? 'أهلاً بك يا' : 'Welcome'}</p>
-              <p className="text-sm font-black text-white">{selectedCustomer.name}</p>
+        {/* Customer greeting or info and cashier connection button */}
+        <div className="flex items-center gap-2.5">
+          {activeCustomerName ? (
+            <div className="flex items-center gap-3 bg-slate-800/90 border border-slate-700 py-2 px-4 rounded-2xl">
+              <Award className="w-6 h-6 text-amber-400" />
+              <div>
+                <p className="text-xs text-slate-400">{language === 'ar' ? 'أهلاً بك يا' : 'Welcome'}</p>
+                <p className="text-sm font-black text-white">{activeCustomerName}</p>
+              </div>
+              {selectedCustomer && (
+                <div className="ms-2 ps-3 border-s border-slate-700 text-end">
+                  <span className="text-[10px] text-amber-400 block">{language === 'ar' ? 'رصيد النقاط' : 'Points'}</span>
+                  <span className="text-sm font-black text-amber-400">{selectedCustomer.points.toLocaleString()}</span>
+                </div>
+              )}
             </div>
-            <div className="ms-2 ps-3 border-s border-slate-700 text-end">
-              <span className="text-[10px] text-amber-400 block">{language === 'ar' ? 'رصيد النقاط' : 'Points'}</span>
-              <span className="text-sm font-black text-amber-400">{selectedCustomer.points.toLocaleString()}</span>
+          ) : (
+            <div className="hidden sm:flex items-center gap-2 text-slate-400 text-xs font-semibold">
+              <Sparkles className="w-4 h-4 text-amber-400" />
+              <span>{language === 'ar' ? 'شكراً لزيارتكم ونسعد بخدمتكم دائماً' : 'Thank you for shopping with us!'}</span>
             </div>
-          </div>
-        ) : (
-          <div className="hidden sm:flex items-center gap-2 text-slate-400 text-xs font-semibold">
-            <Sparkles className="w-4 h-4 text-amber-400" />
-            <span>{language === 'ar' ? 'شكراً لزيارتكم ونسعد بخدمتكم دائماً' : 'Thank you for shopping with us!'}</span>
-          </div>
-        )}
+          )}
+
+          <button
+            onClick={() => setIsConnectToCashierModalOpen(true)}
+            className="py-2 px-3 rounded-2xl bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 border border-slate-700 flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+            title="إدخال كود الكاشير لربط هذه الشاشة بالكاشير الرئيسي"
+          >
+            <KeyRound className="w-4 h-4 text-emerald-400" />
+            <span className="hidden sm:inline">{language === 'ar' ? 'ربط بكود الكاشير' : 'Connect to Cashier'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Body Content */}
@@ -134,7 +158,7 @@ export const CustomerFacingDisplayView: React.FC<{ onBackToMain?: () => void }> 
             <div className="flex items-center gap-2">
               <ShoppingBag className="w-5 h-5 text-amber-400" />
               <h2 className="text-base font-black text-white">
-                {language === 'ar' ? 'قائمة مشترياتك الحالية' : 'Current Order Items'} ({cart.length})
+                {language === 'ar' ? 'قائمة مشترياتك الحالية' : 'Current Order Items'} ({effectiveCart.length})
               </h2>
             </div>
             {pointsEarned > 0 && (
@@ -146,7 +170,7 @@ export const CustomerFacingDisplayView: React.FC<{ onBackToMain?: () => void }> 
           </div>
 
           {/* Items or Empty Banner */}
-          {cart.length === 0 ? (
+          {effectiveCart.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-8">
               {/* Promotional Slide Banner */}
               <div className={`w-full max-w-lg p-6 rounded-3xl bg-gradient-to-br ${promoOffers[promoSlide].color} text-white shadow-2xl animate-in fade-in`}>
@@ -172,7 +196,7 @@ export const CustomerFacingDisplayView: React.FC<{ onBackToMain?: () => void }> 
             </div>
           ) : (
             <div className="flex-1 overflow-y-auto divide-y divide-slate-800/80 pe-2">
-              {cart.map((item, idx) => (
+              {effectiveCart.map((item, idx) => (
                 <div key={`${item.productId}-${idx}`} className="py-3.5 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/30 text-amber-400 font-black text-sm flex items-center justify-center shrink-0">
@@ -212,10 +236,10 @@ export const CustomerFacingDisplayView: React.FC<{ onBackToMain?: () => void }> 
               <span className="font-bold">{formatCurrency(subtotal)}</span>
             </div>
 
-            {orderDiscount?.value > 0 && (
+            {discountVal > 0 && (
               <div className="flex justify-between text-xs text-emerald-400">
                 <span>{language === 'ar' ? 'الخصم المطبق' : 'Discount'}</span>
-                <span className="font-bold">-{formatCurrency(orderDiscount.value)}</span>
+                <span className="font-bold">-{formatCurrency(discountVal)}</span>
               </div>
             )}
 

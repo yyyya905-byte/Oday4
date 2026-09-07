@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Sale, SaleItem } from '../../types';
+import { Sale, SaleItem, Refund } from '../../types';
 import {
   RotateCcw,
   Search,
@@ -10,75 +10,272 @@ import {
   Calendar,
   DollarSign,
   User,
-  History
+  History,
+  ScanBarcode,
+  Camera,
+  Printer,
+  X,
+  Check,
+  Tag,
+  Copy,
+  ArrowRight,
+  ShieldCheck,
+  CreditCard,
+  Banknote,
+  Sparkles,
+  AlertTriangle,
+  Barcode as BarcodeIcon,
+  RefreshCw,
+  Eye
 } from 'lucide-react';
+import { soundEffects } from '../../services/audio';
+import { generateBarcodeSvg } from '../../utils/barcodeUtils';
+import { InvoiceBarcodeScannerModal } from './InvoiceBarcodeScannerModal';
+import { PrintableReturnModal } from './PrintableReturnModal';
 
 export const ReturnsView: React.FC = () => {
   const {
     sales,
+    refunds,
     returns,
     processReturn,
     formatCurrency,
     t,
     language,
     settings,
-    notify
+    notify,
+    selectedReturnInvoice,
+    setSelectedReturnInvoice,
+    recordCustomerDebtPayment,
+    customers
   } = useApp();
 
   const [invoiceQuery, setInvoiceQuery] = useState('');
   const [selectedInvoice, setSelectedInvoice] = useState<Sale | null>(null);
   const [returnItems, setReturnItems] = useState<{ [productId: string]: number }>({});
+  const [selectedItemIds, setSelectedItemIds] = useState<{ [productId: string]: boolean }>({});
   const [reason, setReason] = useState('رغبة العميل');
+  const [customReason, setCustomReason] = useState('');
   const [restock, setRestock] = useState(true);
+  const [refundMethod, setRefundMethod] = useState<'cash' | 'card' | 'credit_debt'>('cash');
 
-  const handleSearchInvoice = (e: React.FormEvent) => {
-    e.preventDefault();
-    const clean = invoiceQuery.trim().toLowerCase();
+  // Modals state
+  const [isScannerModalOpen, setIsScannerModalOpen] = useState(false);
+  const [isReturnReceiptOpen, setIsReturnReceiptOpen] = useState(false);
+  const [activeRefundForPrint, setActiveRefundForPrint] = useState<any>(null);
+  const [copiedInvoice, setCopiedInvoice] = useState(false);
+
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Check if an invoice was passed via navigation (e.g. from InvoicesView)
+  useEffect(() => {
+    if (selectedReturnInvoice) {
+      loadInvoiceForReturn(selectedReturnInvoice);
+      setSelectedReturnInvoice(null);
+    }
+  }, [selectedReturnInvoice]);
+
+  // Load an invoice into the return work area
+  const loadInvoiceForReturn = (sale: Sale) => {
+    setSelectedInvoice(sale);
+    setInvoiceQuery(sale.invoiceNumber);
+
+    // Calculate previously returned quantities for items in this sale
+    const prevReturnsForSale = (refunds || []).filter(r => r.originalSaleId === sale.id);
+    const initialReturnQuantities: { [productId: string]: number } = {};
+    const initialSelected: { [productId: string]: boolean } = {};
+
+    sale.items.forEach(item => {
+      const previouslyReturned = prevReturnsForSale.reduce((acc, r) => {
+        const matching = (r.items || []).find(it => it.productId === item.productId);
+        return acc + (matching ? matching.quantity : 0);
+      }, 0);
+
+      const availableQty = Math.max(0, item.quantity - previouslyReturned);
+
+      // Default: If available > 0, select by default with 1 or availableQty
+      if (availableQty > 0) {
+        initialReturnQuantities[item.productId] = availableQty;
+        initialSelected[item.productId] = true;
+      } else {
+        initialReturnQuantities[item.productId] = 0;
+        initialSelected[item.productId] = false;
+      }
+    });
+
+    setReturnItems(initialReturnQuantities);
+    setSelectedItemIds(initialSelected);
+
+    // If the original sale was on credit and customer has debt, suggest debt deduction
+    const cust = customers.find(c => c.id === sale.customerId);
+    if (sale.paymentMethod === 'credit' || (cust && (cust.currentDebt || 0) > 0)) {
+      setRefundMethod('credit_debt');
+    } else {
+      setRefundMethod('cash');
+    }
+
+    soundEffects.playClick();
+  };
+
+  // Search by text / barcode input
+  const handleSearchInvoice = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const clean = invoiceQuery.trim();
     if (!clean) return;
 
-    const found = sales.find(s => s.invoiceNumber.toLowerCase() === clean);
+    // Check JSON QR payload
+    let targetQuery = clean;
+    if (clean.startsWith('{') && clean.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(clean);
+        if (parsed.inv || parsed.invoiceNumber) {
+          targetQuery = parsed.inv || parsed.invoiceNumber;
+        }
+      } catch {}
+    }
+
+    const found = sales.find(s => 
+      s.invoiceNumber.toLowerCase() === targetQuery.toLowerCase() ||
+      s.id.toLowerCase() === targetQuery.toLowerCase()
+    );
+
     if (found) {
-      setSelectedInvoice(found);
-      // Initialize return quantities
-      const initial: { [productId: string]: number } = {};
-      found.items.forEach(it => {
-        initial[it.productId] = 0;
-      });
-      setReturnItems(initial);
+      soundEffects.playSuccess();
+      loadInvoiceForReturn(found);
+      notify('تم العثور على الفاتورة', `#${found.invoiceNumber}`, 'success');
     } else {
-      notify('غير موجود', `لم يتم العثور على فاتورة برقم ${invoiceQuery}`, 'warning');
-      setSelectedInvoice(null);
+      soundEffects.playWarning();
+      notify('غير موجود', `لم يتم العثور على فاتورة بالرقم "${targetQuery}"`, 'warning');
     }
   };
 
-  const handleQuantityChange = (productId: string, val: number, max: number) => {
-    const clamped = Math.max(0, Math.min(max, val));
+  // Hardware Scanner detection on search input
+  const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      handleSearchInvoice();
+    }
+  };
+
+  // Stepper quantity update for a specific item
+  const handleQuantityChange = (productId: string, val: number, maxAvailable: number) => {
+    const clamped = Math.max(0, Math.min(maxAvailable, val));
     setReturnItems(prev => ({
       ...prev,
       [productId]: clamped,
     }));
+
+    // Auto-update selection checkbox
+    setSelectedItemIds(prev => ({
+      ...prev,
+      [productId]: clamped > 0,
+    }));
   };
 
-  // Calculate return refund total
+  // Toggle selection checkbox for an item
+  const handleToggleItemSelection = (productId: string, maxAvailable: number) => {
+    const currentlySelected = !!selectedItemIds[productId];
+    const nextSelected = !currentlySelected;
+
+    setSelectedItemIds(prev => ({
+      ...prev,
+      [productId]: nextSelected,
+    }));
+
+    setReturnItems(prev => ({
+      ...prev,
+      [productId]: nextSelected ? (prev[productId] > 0 ? prev[productId] : maxAvailable) : 0,
+    }));
+  };
+
+  // Quick batch actions
+  const handleSelectAll = () => {
+    if (!selectedInvoice) return;
+    const prevReturnsForSale = (refunds || []).filter(r => r.originalSaleId === selectedInvoice.id);
+
+    const updatedQty: { [productId: string]: number } = {};
+    const updatedSelected: { [productId: string]: boolean } = {};
+
+    selectedInvoice.items.forEach(item => {
+      const previouslyReturned = prevReturnsForSale.reduce((acc, r) => {
+        const matching = (r.items || []).find(it => it.productId === item.productId);
+        return acc + (matching ? matching.quantity : 0);
+      }, 0);
+      const availableQty = Math.max(0, item.quantity - previouslyReturned);
+
+      if (availableQty > 0) {
+        updatedQty[item.productId] = availableQty;
+        updatedSelected[item.productId] = true;
+      } else {
+        updatedQty[item.productId] = 0;
+        updatedSelected[item.productId] = false;
+      }
+    });
+
+    setReturnItems(updatedQty);
+    setSelectedItemIds(updatedSelected);
+    soundEffects.playClick();
+  };
+
+  const handleDeselectAll = () => {
+    if (!selectedInvoice) return;
+    const updatedQty: { [productId: string]: number } = {};
+    const updatedSelected: { [productId: string]: boolean } = {};
+
+    selectedInvoice.items.forEach(item => {
+      updatedQty[item.productId] = 0;
+      updatedSelected[item.productId] = false;
+    });
+
+    setReturnItems(updatedQty);
+    setSelectedItemIds(updatedSelected);
+    soundEffects.playClick();
+  };
+
+  // Compute previously returned summary for this invoice
+  const previousReturns = selectedInvoice 
+    ? (refunds || []).filter(r => r.originalSaleId === selectedInvoice.id)
+    : [];
+
+  const totalPreviouslyReturnedAmount = previousReturns.reduce((acc, r) => acc + (r.totalRefundAmount || 0), 0);
+
+  // Compute available returnable quantity for a specific item
+  const getItemAvailableQty = (item: SaleItem): number => {
+    if (!selectedInvoice) return item.quantity;
+    const previouslyReturned = previousReturns.reduce((acc, r) => {
+      const matching = (r.items || []).find(it => it.productId === item.productId);
+      return acc + (matching ? matching.quantity : 0);
+    }, 0);
+    return Math.max(0, item.quantity - previouslyReturned);
+  };
+
+  // Compute live refund total
   const calculateRefundTotal = () => {
     if (!selectedInvoice) return 0;
     let sum = 0;
     selectedInvoice.items.forEach(it => {
+      const isSelected = selectedItemIds[it.productId];
       const qty = returnItems[it.productId] || 0;
-      if (qty > 0) {
+      if (isSelected && qty > 0) {
         sum += it.unitPrice * qty;
       }
     });
     return sum;
   };
 
+  const refundTotal = calculateRefundTotal();
+  const selectedItemsCount = selectedInvoice 
+    ? selectedInvoice.items.filter(it => selectedItemIds[it.productId] && (returnItems[it.productId] || 0) > 0).length
+    : 0;
+
+  // Process and finalize return
   const handleConfirmReturn = () => {
     if (!selectedInvoice) return;
 
     const itemsToReturn: SaleItem[] = [];
     selectedInvoice.items.forEach(it => {
+      const isSelected = selectedItemIds[it.productId];
       const qty = returnItems[it.productId] || 0;
-      if (qty > 0) {
+      if (isSelected && qty > 0) {
         itemsToReturn.push({
           ...it,
           quantity: qty,
@@ -88,288 +285,673 @@ export const ReturnsView: React.FC = () => {
     });
 
     if (itemsToReturn.length === 0) {
-      notify('تنبيه', 'يرجى تحديد كمية صنف واحد على الأقل للإرجاع', 'warning');
+      soundEffects.playWarning();
+      notify('تنبيه', 'يرجى تحديد صنف واحد على الأقل مع كمية للإرجاع', 'warning');
       return;
     }
 
+    const effectiveReason = reason === 'أخرى' && customReason ? customReason : reason;
+
     const ret = processReturn({
       originalSaleId: selectedInvoice.id,
-      items: itemsToReturn,
-      reason,
+      items: itemsToReturn.map(it => ({
+        productId: it.productId,
+        productNameAr: it.productNameAr,
+        quantity: it.quantity,
+        unitPrice: it.unitPrice,
+        total: it.total,
+      })),
+      reason: effectiveReason,
       restockItems: restock,
     });
 
     if (ret) {
-      notify('تم بنجاح', `تم تسجيل عملية المرتجع واسترداد ${formatCurrency(ret.totalRefund)}`, 'success');
+      // If customer has debt and chose to deduct refund from debt
+      if (refundMethod === 'credit_debt' && selectedInvoice.customerId) {
+        const cust = customers.find(c => c.id === selectedInvoice.customerId);
+        if (cust) {
+          recordCustomerDebtPayment(
+            cust.id,
+            ret.totalRefund,
+            'cash',
+            `خصم مرتجع فاتورة رقم ${ret.returnNumber || ret.refundNumber} من رصيد الدين`
+          );
+        }
+      }
+
+      soundEffects.playSuccess();
+      notify('تم تسجيل المرتجع بنجاح', `رقم الإشعار: ${ret.returnNumber || ret.refundNumber} بقيمة ${formatCurrency(ret.totalRefund)}`, 'success');
+
+      // Prepare return voucher for printing
+      setActiveRefundForPrint({
+        ...ret,
+        refundMethod,
+      });
+      setIsReturnReceiptOpen(true);
+
+      // Reset form
       setSelectedInvoice(null);
       setInvoiceQuery('');
+      setReturnItems({});
+      setSelectedItemIds({});
     }
   };
 
-  const refundTotal = calculateRefundTotal();
+  const handleCopyInvoiceNumber = () => {
+    if (!selectedInvoice) return;
+    navigator.clipboard.writeText(selectedInvoice.invoiceNumber);
+    setCopiedInvoice(true);
+    setTimeout(() => setCopiedInvoice(false), 1500);
+  };
 
   return (
-    <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-5 bg-slate-50/50 dark:bg-slate-950">
+    <div className="flex-1 p-3 sm:p-6 overflow-y-auto space-y-5 bg-slate-50/50 dark:bg-slate-950 max-w-full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+            <RotateCcw className="w-6 h-6 text-rose-600" />
             <span>{t('returnsTitle')}</span>
-            <span className="text-xs bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold px-2 py-0.5 rounded-full">
-              إدارة المرتجعات والاسترداد
+            <span className="text-xs bg-rose-500/10 text-rose-700 dark:text-rose-400 font-bold px-2.5 py-0.5 rounded-full border border-rose-500/20">
+              ربط المرتجعات بالباركود
             </span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            معالجة مرتجعات المبيعات، إعادة الأصناف للمخزون، واسترداد المبالغ للعميل
+            مسح باركود الفاتورة الأصلية، استرجاع تفاصيل البيع، واختيار العناصر المراد إرجاعها بدقة وسرعة
           </p>
         </div>
+
+        {/* Scan Barcode Action Button */}
+        <button
+          onClick={() => setIsScannerModalOpen(true)}
+          className="px-4 py-3 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white font-extrabold text-xs sm:text-sm rounded-2xl shadow-lg shadow-amber-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+        >
+          <Camera className="w-5 h-5" />
+          <span>مسح باركود الفاتورة بالكاميرا</span>
+        </button>
       </div>
 
-      {/* Invoice Search Box */}
-      <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-4">
-        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-          البحث عن الفاتورة الأصلية لإجراء المرتجع
-        </h3>
+      {/* Invoice Search & Scanner Input Card */}
+      <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-3.5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <label className="text-xs font-black text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+            <BarcodeIcon className="w-4 h-4 text-amber-500" />
+            <span>البحث برقم الفاتورة أو مسح الباركود المطبوع على الإيصال:</span>
+          </label>
+          <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            يدعم قارئ الباركود اليدوي USB والكاميرا
+          </span>
+        </div>
 
-        <form onSubmit={handleSearchInvoice} className="flex gap-2 max-w-lg">
+        <form onSubmit={handleSearchInvoice} className="flex flex-col sm:flex-row gap-2">
           <div className="relative flex-1">
             <input
+              ref={searchInputRef}
               type="text"
               value={invoiceQuery}
               onChange={e => setInvoiceQuery(e.target.value)}
-              placeholder="أدخل رقم الفاتورة (مثال: INV-20260831-0001)..."
-              className="w-full pl-3 pr-9 py-2.5 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm font-mono font-bold text-slate-900 dark:text-white rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-amber-500"
+              onKeyDown={handleInputKeyDown}
+              placeholder="امسح بالباركود أو اكتب رقم الفاتورة (مثال: INV-20260831-0001)..."
+              className="w-full pl-3 pr-10 py-3 bg-slate-50 dark:bg-slate-800 text-xs sm:text-sm font-mono font-bold text-slate-900 dark:text-white rounded-2xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20"
             />
-            <Search className="w-4 h-4 text-slate-400 absolute start-3 top-3.5" />
+            <Search className="w-4 h-4 text-slate-400 absolute start-3.5 top-3.5" />
           </div>
 
-          <button
-            type="submit"
-            className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl shadow-xs transition-all shrink-0"
-          >
-            بحث عن الفاتورة
-          </button>
-        </form>
-
-        {/* Quick Demo Invoices */}
-        <div>
-          <span className="text-[11px] font-bold text-slate-400 block mb-1">فواتير مسجلة جاهزة للتجربة:</span>
-          <div className="flex flex-wrap gap-1.5">
-            {(sales || []).slice(0, 4).map(s => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => {
-                  setInvoiceQuery(s.invoiceNumber);
-                  setSelectedInvoice(s);
-                  const initial: { [productId: string]: number } = {};
-                  (s.items || []).forEach(it => {
-                    initial[it.productId] = 0;
-                  });
-                  setReturnItems(initial);
-                }}
-                className="px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-[11px] font-mono text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
-              >
-                {s.invoiceNumber} ({formatCurrency(s.total)})
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Selected Invoice Return Form */}
-      {selectedInvoice && (
-        <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-4 animate-in fade-in">
-          <div className="flex flex-wrap items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 gap-2">
-            <div>
-              <span className="text-xs text-slate-400 block">الفاتورة المحددة:</span>
-              <h3 className="text-base font-black text-slate-900 dark:text-white font-mono">
-                {selectedInvoice.invoiceNumber}
-              </h3>
-              <p className="text-xs text-slate-500 mt-0.5">
-                العميل: {selectedInvoice.customerName || 'عميل نقدي'} • التاريخ: {new Date(selectedInvoice.createdAt).toLocaleString()}
-              </p>
-            </div>
-
-            <div className="text-end">
-              <span className="text-xs text-slate-400 block">إجمالي الفاتورة الأصلية:</span>
-              <span className="text-lg font-black text-slate-900 dark:text-white font-mono">
-                {formatCurrency(selectedInvoice.total)}
-              </span>
-            </div>
-          </div>
-
-          {/* Items Return Table */}
-          <div className="overflow-x-auto">
-            <table className="w-full text-start text-xs">
-              <thead>
-                <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400">
-                  <th className="pb-2 text-start">الصنف</th>
-                  <th className="pb-2 text-center">الكمية المباعة</th>
-                  <th className="pb-2 text-end">سعر الوحدة</th>
-                  <th className="pb-2 text-center">الكمية المراد إرجاعها</th>
-                  <th className="pb-2 text-end">مبلغ الاسترداد</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {selectedInvoice.items.map(item => {
-                  const currentReturnQty = returnItems[item.productId] || 0;
-                  const itemRefund = item.unitPrice * currentReturnQty;
-
-                  return (
-                    <tr key={item.productId} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                      <td className="py-3 font-bold text-slate-900 dark:text-white">
-                        {item.productNameAr}
-                      </td>
-                      <td className="py-3 text-center font-mono font-bold">
-                        {item.quantity}
-                      </td>
-                      <td className="py-3 text-end font-mono text-slate-500">
-                        {formatCurrency(item.unitPrice)}
-                      </td>
-                      <td className="py-3 text-center">
-                        <div className="inline-flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
-                          <button
-                            type="button"
-                            onClick={() => handleQuantityChange(item.productId, currentReturnQty - 1, item.quantity)}
-                            className="w-6 h-6 rounded-lg bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 flex items-center justify-center font-bold"
-                          >
-                            -
-                          </button>
-                          <span className="w-8 text-center font-mono font-bold text-slate-900 dark:text-white">
-                            {currentReturnQty}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => handleQuantityChange(item.productId, currentReturnQty + 1, item.quantity)}
-                            className="w-6 h-6 rounded-lg bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-200 flex items-center justify-center font-bold"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </td>
-                      <td className="py-3 text-end font-mono font-bold text-rose-600 dark:text-rose-400">
-                        {formatCurrency(itemRefund)}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Reason and Options */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-3 border-t border-slate-100 dark:border-slate-800">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                سبب الإرجاع:
-              </label>
-              <select
-                value={reason}
-                onChange={e => setReason(e.target.value)}
-                className="w-full text-xs font-bold px-3 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none"
-              >
-                <option value="رغبة العميل">رغبة العميل (تغيير رأي)</option>
-                <option value="منتج به عيب تصنيع">منتج به عيب تصنيع أو تلف</option>
-                <option value="صنف غير مطابق للطلب">صنف غير مطابق للطلب</option>
-                <option value="أخرى">سبب آخر</option>
-              </select>
-            </div>
-
-            <div className="flex items-center gap-2 pt-5">
-              <input
-                type="checkbox"
-                id="restock-checkbox"
-                checked={restock}
-                onChange={e => setRestock(e.target.checked)}
-                className="w-4 h-4 accent-amber-500 rounded"
-              />
-              <label htmlFor="restock-checkbox" className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                إعادة الأصناف المرتجعة إلى المخزون تلقائياً (+ زيادة الكمية)
-              </label>
-            </div>
-          </div>
-
-          {/* Submit Return */}
-          <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div>
-              <span className="text-xs text-slate-400 block">المبلغ الإجمالي المسترد للعميل:</span>
-              <span className="text-2xl font-black text-rose-600 dark:text-rose-400 font-mono">
-                {formatCurrency(refundTotal)}
-              </span>
-            </div>
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              className="flex-1 sm:flex-initial px-5 py-3 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold text-xs rounded-2xl shadow-xs active:scale-95 transition-all flex items-center justify-center gap-1.5"
+            >
+              <Search className="w-4 h-4" />
+              <span>جلب تفاصيل الفاتورة</span>
+            </button>
 
             <button
               type="button"
-              disabled={refundTotal <= 0}
-              onClick={handleConfirmReturn}
-              className={`px-8 py-3.5 rounded-2xl text-white font-extrabold text-xs flex items-center gap-2 shadow-lg transition-all ${
-                refundTotal <= 0
-                  ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed shadow-none'
-                  : 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30'
+              onClick={() => setIsScannerModalOpen(true)}
+              className="px-4 py-3 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-950/60 text-amber-700 dark:text-amber-400 font-bold text-xs rounded-2xl border border-amber-200 dark:border-amber-800/60 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+              title="فتح ماسح الباركود بالكاميرا"
+            >
+              <ScanBarcode className="w-4 h-4" />
+              <span className="hidden sm:inline">الكاميرا</span>
+            </button>
+          </div>
+        </form>
+
+        {/* Quick Demo Invoices Bar */}
+        <div className="pt-1 flex items-center flex-wrap gap-2 text-xs">
+          <span className="text-[11px] font-bold text-slate-400">فواتير سريعة للتجربة:</span>
+          {sales.slice(0, 4).map(s => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => loadInvoiceForReturn(s)}
+              className={`px-2.5 py-1 rounded-xl text-[11px] font-mono border transition-all flex items-center gap-1 ${
+                selectedInvoice?.id === s.id
+                  ? 'bg-amber-500 text-white border-amber-500 shadow-xs'
+                  : 'bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700'
               }`}
             >
-              <RotateCcw className="w-4 h-4" />
-              <span>تأكيد الإرجاع واسترداد المبلغ</span>
+              <span>{s.invoiceNumber}</span>
+              <span className="opacity-75 text-[10px]">({formatCurrency(s.total)})</span>
             </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Selected Invoice Return Studio */}
+      {selectedInvoice && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-sm overflow-hidden space-y-4 animate-in fade-in">
+          {/* Invoice Header Card */}
+          <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-50 to-amber-50/30 dark:from-slate-800/80 dark:to-slate-800/40 border-b border-slate-200/90 dark:border-slate-800">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-xs bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-bold px-2.5 py-0.5 rounded-full border border-emerald-500/20 flex items-center gap-1">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    فاتورة أصلية موثقة
+                  </span>
+                  <span className="font-mono font-black text-slate-900 dark:text-white text-base sm:text-lg">
+                    #{selectedInvoice.invoiceNumber}
+                  </span>
+                  <button
+                    onClick={handleCopyInvoiceNumber}
+                    className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                    title="نسخ رقم الفاتورة"
+                  >
+                    {copiedInvoice ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+
+                {/* Metadata Grid */}
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
+                  <span className="flex items-center gap-1">
+                    <User className="w-3.5 h-3.5 text-slate-400" />
+                    العميل: <strong className="text-slate-900 dark:text-white">{selectedInvoice.customerName || 'عميل نقدي'}</strong>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                    التاريخ: <span className="font-mono">{new Date(selectedInvoice.createdAt).toLocaleString(language === 'ar' ? 'ar-SY' : 'en-US')}</span>
+                  </span>
+                  <span>
+                    الكاشير: <strong>{selectedInvoice.cashierName}</strong>
+                  </span>
+                  <span>
+                    طريقة الدفع: <span className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-[10px] font-bold">{selectedInvoice.paymentMethod}</span>
+                  </span>
+                  {selectedInvoice.tradeType && (
+                    <span className="text-amber-600 dark:text-amber-400 font-bold">
+                      ({selectedInvoice.tradeType === 'wholesale' ? 'تجارة جملة' : 'بيع مفرق'})
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Financial Totals Pill */}
+              <div className="flex items-center gap-4 bg-white dark:bg-slate-900/90 p-3 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xs self-start lg:self-auto">
+                <div className="text-end">
+                  <span className="text-[10px] text-slate-400 block font-semibold">إجمالي الفاتورة الأصلية</span>
+                  <span className="text-base sm:text-lg font-black font-mono text-slate-900 dark:text-white">
+                    {formatCurrency(selectedInvoice.total)}
+                  </span>
+                </div>
+                <div className="h-8 w-px bg-slate-200 dark:bg-slate-700" />
+                <div className="text-end">
+                  <span className="text-[10px] text-slate-400 block font-semibold">الأصناف المشتراة</span>
+                  <span className="text-base font-bold font-mono text-amber-600 dark:text-amber-400">
+                    {selectedInvoice.items.length} صنف
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Previous Returns Notice Banner */}
+            {previousReturns.length > 0 && (
+              <div className="mt-3 p-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-300">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
+                <div>
+                  <p className="font-bold">
+                    تنبيه: تمت معالجة {previousReturns.length} عملية إرجاع سابقة لهذه الفاتورة بإجمالي مسترد {formatCurrency(totalPreviouslyReturnedAmount)}.
+                  </p>
+                  <p className="text-[11px] opacity-90 mt-0.5">
+                    الكميات المتاحة للإرجاع في الجدول أدناه محسوبة تلقائياً بخصم ما تم إرجاعه مسبقاً لحماية الحسابات.
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Selective Items Table Card */}
+          <div className="p-4 sm:p-5 space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>اختيار العناصر المراد إرجاعها فقط</span>
+                  <span className="text-xs bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 px-2 py-0.5 rounded-full font-bold">
+                    محدد: {selectedItemsCount} من {selectedInvoice.items.length}
+                  </span>
+                </h4>
+                <p className="text-xs text-slate-500">
+                  حدد الصنف واضبط الكمية المراد إرجاعها بدقة عبر مفاتيح اللمس السريعة
+                </p>
+              </div>
+
+              {/* Quick Batch Buttons */}
+              <div className="flex items-center gap-1.5 self-start sm:self-auto">
+                <button
+                  type="button"
+                  onClick={handleSelectAll}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-all"
+                >
+                  تحديد الكل
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeselectAll}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-all"
+                >
+                  إلغاء التحديد
+                </button>
+              </div>
+            </div>
+
+            {/* Items List */}
+            <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-start text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-bold">
+                      <th className="py-3 px-3 text-center w-12">تحديد</th>
+                      <th className="py-3 px-3 text-start">الصنف</th>
+                      <th className="py-3 px-2 text-center">الكمية الأصلية</th>
+                      <th className="py-3 px-2 text-center">المتاح للإرجاع</th>
+                      <th className="py-3 px-3 text-end">سعر الوحدة</th>
+                      <th className="py-3 px-3 text-center w-44">كمية المرتجع</th>
+                      <th className="py-3 px-4 text-end">مبلغ الاسترداد</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                    {selectedInvoice.items.map(item => {
+                      const maxAvailable = getItemAvailableQty(item);
+                      const isSelected = !!selectedItemIds[item.productId];
+                      const currentQty = returnItems[item.productId] || 0;
+                      const lineRefund = item.unitPrice * (isSelected ? currentQty : 0);
+                      const isFullyReturned = maxAvailable <= 0;
+
+                      return (
+                        <tr
+                          key={item.productId}
+                          className={`transition-colors ${
+                            isFullyReturned
+                              ? 'bg-slate-50/50 dark:bg-slate-900/30 opacity-60'
+                              : isSelected
+                              ? 'bg-amber-50/40 dark:bg-amber-950/20'
+                              : 'hover:bg-slate-50/60 dark:hover:bg-slate-800/30'
+                          }`}
+                        >
+                          {/* Selection Checkbox */}
+                          <td className="py-3 px-3 text-center">
+                            <input
+                              type="checkbox"
+                              disabled={isFullyReturned}
+                              checked={isSelected}
+                              onChange={() => handleToggleItemSelection(item.productId, maxAvailable)}
+                              className="w-5 h-5 accent-amber-500 rounded-lg cursor-pointer disabled:cursor-not-allowed"
+                            />
+                          </td>
+
+                          {/* Product Info */}
+                          <td className="py-3 px-3">
+                            <span className="font-bold text-slate-900 dark:text-white block">
+                              {item.productNameAr}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-mono">
+                              باركود: {item.barcode || '—'}
+                            </span>
+                          </td>
+
+                          {/* Original Purchased Qty */}
+                          <td className="py-3 px-2 text-center font-mono font-bold text-slate-700 dark:text-slate-300">
+                            {item.quantity}
+                          </td>
+
+                          {/* Available to Return */}
+                          <td className="py-3 px-2 text-center">
+                            {isFullyReturned ? (
+                              <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[10px] font-bold text-slate-500">
+                                مرتجع بالكامل
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 font-mono font-bold text-xs">
+                                {maxAvailable} قطع
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Unit Price */}
+                          <td className="py-3 px-3 text-end font-mono text-slate-600 dark:text-slate-400">
+                            {formatCurrency(item.unitPrice)}
+                          </td>
+
+                          {/* Stepper Controls (Large Touch-Friendly) */}
+                          <td className="py-3 px-3 text-center">
+                            {isFullyReturned ? (
+                              <span className="text-[11px] text-slate-400 font-semibold">—</span>
+                            ) : (
+                              <div className="inline-flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-2xl border border-slate-200 dark:border-slate-700">
+                                <button
+                                  type="button"
+                                  disabled={currentQty <= 0}
+                                  onClick={() => handleQuantityChange(item.productId, currentQty - 1, maxAvailable)}
+                                  className="w-9 h-9 rounded-xl bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-black text-sm flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-600 active:scale-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
+                                >
+                                  -
+                                </button>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={maxAvailable}
+                                  value={currentQty}
+                                  onChange={e => handleQuantityChange(item.productId, parseInt(e.target.value) || 0, maxAvailable)}
+                                  className="w-12 text-center font-mono font-black text-sm text-slate-900 dark:text-white bg-transparent focus:outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={currentQty >= maxAvailable}
+                                  onClick={() => handleQuantityChange(item.productId, currentQty + 1, maxAvailable)}
+                                  className="w-9 h-9 rounded-xl bg-white dark:bg-slate-700 text-slate-900 dark:text-white font-black text-sm flex items-center justify-center hover:bg-slate-200 dark:hover:bg-slate-600 active:scale-90 transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-xs"
+                                >
+                                  +
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleQuantityChange(item.productId, maxAvailable, maxAvailable)}
+                                  className="px-2 py-1 bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-400 font-bold text-[10px] rounded-lg transition-colors ms-0.5"
+                                  title="إرجاع كامل الكمية المتاحة لهذا الصنف"
+                                >
+                                  الكل
+                                </button>
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Line Refund Total */}
+                          <td className="py-3 px-4 text-end font-mono font-black text-rose-600 dark:text-rose-400 text-sm">
+                            {formatCurrency(lineRefund)}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Return Settings, Reason & Payout Method */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-3 border-t border-slate-100 dark:border-slate-800">
+              {/* Return Reason */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  سبب الإرجاع:
+                </label>
+                <select
+                  value={reason}
+                  onChange={e => setReason(e.target.value)}
+                  className="w-full text-xs font-bold px-3 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:border-amber-500"
+                >
+                  <option value="رغبة العميل">رغبة العميل (تغيير رأي)</option>
+                  <option value="منتج به عيب تصنيع أو تالف">منتج به عيب تصنيع أو تالف</option>
+                  <option value="صنف غير مطابق للطلب أو المقاس">صنف غير مطابق للطلب أو المقاس</option>
+                  <option value="انتهاء الصلاحية أو الجودة">انتهاء الصلاحية أو الجودة</option>
+                  <option value="أخرى">سبب آخر (تحديد يدوي)</option>
+                </select>
+
+                {reason === 'أخرى' && (
+                  <input
+                    type="text"
+                    value={customReason}
+                    onChange={e => setCustomReason(e.target.value)}
+                    placeholder="اكتب سبب الإرجاع هنا..."
+                    className="w-full mt-2 text-xs font-medium px-3 py-2 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none"
+                  />
+                )}
+              </div>
+
+              {/* Refund Payout Method */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  طريقة استرداد المبلغ:
+                </label>
+                <div className="space-y-1.5">
+                  <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 cursor-pointer text-xs font-semibold">
+                    <input
+                      type="radio"
+                      name="refundMethod"
+                      value="cash"
+                      checked={refundMethod === 'cash'}
+                      onChange={() => setRefundMethod('cash')}
+                      className="accent-amber-500"
+                    />
+                    <Banknote className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>نقداً (Cash Refund)</span>
+                  </label>
+
+                  <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 cursor-pointer text-xs font-semibold">
+                    <input
+                      type="radio"
+                      name="refundMethod"
+                      value="card"
+                      checked={refundMethod === 'card'}
+                      onChange={() => setRefundMethod('card')}
+                      className="accent-amber-500"
+                    />
+                    <CreditCard className="w-3.5 h-3.5 text-blue-600" />
+                    <span>إرجاع للبطاقة / تحويل بنكي</span>
+                  </label>
+
+                  {selectedInvoice.customerId && (
+                    <label className="flex items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 cursor-pointer text-xs font-semibold">
+                      <input
+                        type="radio"
+                        name="refundMethod"
+                        value="credit_debt"
+                        checked={refundMethod === 'credit_debt'}
+                        onChange={() => setRefundMethod('credit_debt')}
+                        className="accent-amber-500"
+                      />
+                      <DollarSign className="w-3.5 h-3.5 text-amber-600" />
+                      <span>خصم من رصيد دين العميل</span>
+                    </label>
+                  )}
+                </div>
+              </div>
+
+              {/* Restock & Accounting Checkbox */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                  حركة المخزون:
+                </label>
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl space-y-2">
+                  <label className="flex items-start gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      id="restock-checkbox"
+                      checked={restock}
+                      onChange={e => setRestock(e.target.checked)}
+                      className="w-4 h-4 accent-amber-500 rounded mt-0.5"
+                    />
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      إعادة الأصناف المرتجعة للمخزون تلقائياً (+ زيادة الرصيد)
+                    </span>
+                  </label>
+                  <p className="text-[11px] text-slate-500 ms-6">
+                    {restock
+                      ? 'سيتم قيد زيادة المخزون تلقائياً في سجلات المستودع'
+                      : 'لن يتم إضافة الأصناف للمخزون (للبضائع التالفة)'}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Refund Total Summary Bar & Confirmation Action */}
+            <div className="mt-4 p-4 bg-slate-900 dark:bg-slate-800 text-white rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div>
+                <span className="text-xs text-slate-400 block">إجمالي المبلغ المسترد للعميل:</span>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-2xl sm:text-3xl font-black font-mono text-rose-400">
+                    {formatCurrency(refundTotal)}
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    ({selectedItemsCount} أصناف محددة)
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedInvoice(null);
+                    setReturnItems({});
+                    setSelectedItemIds({});
+                  }}
+                  className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all"
+                >
+                  إلغاء
+                </button>
+
+                <button
+                  type="button"
+                  disabled={refundTotal <= 0}
+                  onClick={handleConfirmReturn}
+                  className={`flex-1 sm:flex-initial px-6 py-3.5 rounded-xl font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 ${
+                    refundTotal <= 0
+                      ? 'bg-slate-700 text-slate-400 cursor-not-allowed shadow-none'
+                      : 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/30'
+                  }`}
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  <span>تأكيد الإرجاع وطباعة الإشعار</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* Returns History Table */}
-      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs p-5 space-y-4">
-        <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-          <History className="w-4 h-4 text-amber-500" />
-          <span>سجل المرتجعات السابقة</span>
-        </h3>
+      {/* Historical Returns Log Table */}
+      <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs p-4 sm:p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
+            <History className="w-4 h-4 text-amber-500" />
+            <span>سجل إشعارات المرتجعات السابقة</span>
+            <span className="text-[11px] bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 font-mono px-2 py-0.5 rounded-full font-bold">
+              {returns?.length || 0}
+            </span>
+          </h3>
+        </div>
 
         <div className="overflow-x-auto">
           <table className="w-full text-start text-xs">
             <thead>
-              <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400">
+              <tr className="border-b border-slate-100 dark:border-slate-800 text-slate-400 font-bold">
                 <th className="pb-2 text-start">رقم المرتجع</th>
                 <th className="pb-2 text-start">الفاتورة الأصلية</th>
                 <th className="pb-2 text-start">السبب</th>
                 <th className="pb-2 text-center">الأصناف المرتجعة</th>
                 <th className="pb-2 text-end">مبلغ الاسترداد</th>
+                <th className="pb-2 text-center">حالة المخزون</th>
                 <th className="pb-2 text-end">التاريخ</th>
+                <th className="pb-2 text-end">إجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {(!returns || returns.length === 0) ? (
                 <tr>
-                  <td colSpan={6} className="py-8 text-center text-slate-400">
-                    لا توجد عمليات إرجاع مسجلة
+                  <td colSpan={8} className="py-8 text-center text-slate-400">
+                    لا توجد عمليات إرجاع مسجلة بعد
                   </td>
                 </tr>
               ) : (
-                returns.map((ret: any) => (
-                  <tr key={ret.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                    <td className="py-3 font-mono font-bold text-slate-900 dark:text-white">
-                      {ret.returnNumber || ret.refundNumber || `REF-${ret.id}`}
-                    </td>
-                    <td className="py-3 font-mono text-slate-600 dark:text-slate-400">
-                      {ret.originalInvoiceNumber || ret.invoiceNumber || '—'}
-                    </td>
-                    <td className="py-3 text-slate-700 dark:text-slate-300">
-                      {ret.reason || 'إرجاع'}
-                    </td>
-                    <td className="py-3 text-center font-mono">
-                      {(ret.items || []).reduce((acc: number, it: any) => acc + (it.quantity || 0), 0)} قطع
-                    </td>
-                    <td className="py-3 text-end font-mono font-bold text-rose-600 dark:text-rose-400">
-                      {formatCurrency(ret.totalRefund ?? ret.totalRefundAmount ?? 0)}
-                    </td>
-                    <td className="py-3 text-end text-slate-400 font-mono">
-                      {ret.createdAt ? new Date(ret.createdAt).toLocaleDateString(language === 'ar' ? 'ar-SY' : 'en-US') : '—'}
-                    </td>
-                  </tr>
-                ))
+                returns.map((ret: any) => {
+                  const rNum = ret.returnNumber || ret.refundNumber || `REF-${ret.id}`;
+                  const origInv = ret.originalInvoiceNumber || ret.invoiceNumber || '—';
+                  const origSaleMatch = sales.find(s => s.invoiceNumber === origInv || s.id === ret.originalSaleId);
+
+                  return (
+                    <tr key={ret.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                      <td className="py-3 font-mono font-bold text-slate-900 dark:text-white">
+                        {rNum}
+                      </td>
+                      <td className="py-3 font-mono font-bold text-amber-600 dark:text-amber-400">
+                        {origInv}
+                      </td>
+                      <td className="py-3 text-slate-700 dark:text-slate-300">
+                        {ret.reason || 'إرجاع بضاعة'}
+                      </td>
+                      <td className="py-3 text-center font-mono">
+                        {(ret.items || []).reduce((acc: number, it: any) => acc + (it.quantity || 0), 0)} قطع
+                      </td>
+                      <td className="py-3 text-end font-mono font-black text-rose-600 dark:text-rose-400">
+                        {formatCurrency(ret.totalRefund ?? ret.totalRefundAmount ?? 0)}
+                      </td>
+                      <td className="py-3 text-center">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          ret.restock
+                            ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400'
+                            : 'bg-rose-500/10 text-rose-700 dark:text-rose-400'
+                        }`}>
+                          {ret.restock ? 'أعيدت للمخزون' : 'تالف'}
+                        </span>
+                      </td>
+                      <td className="py-3 text-end text-slate-400 font-mono text-[11px]">
+                        {ret.createdAt ? new Date(ret.createdAt).toLocaleString(language === 'ar' ? 'ar-SY' : 'en-US') : '—'}
+                      </td>
+                      <td className="py-3 text-end">
+                        <button
+                          onClick={() => {
+                            setActiveRefundForPrint(ret);
+                            setIsReturnReceiptOpen(true);
+                          }}
+                          className="p-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-amber-600"
+                          title="طباعة إشعار المرتجع"
+                        >
+                          <Printer className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
       </div>
+
+      {/* Invoice Barcode Scanner Modal */}
+      <InvoiceBarcodeScannerModal
+        isOpen={isScannerModalOpen}
+        onClose={() => setIsScannerModalOpen(false)}
+        onInvoiceMatched={(matchedSale) => {
+          loadInvoiceForReturn(matchedSale);
+        }}
+      />
+
+      {/* Printable Return Voucher Modal */}
+      <PrintableReturnModal
+        isOpen={isReturnReceiptOpen}
+        onClose={() => {
+          setIsReturnReceiptOpen(false);
+          setActiveRefundForPrint(null);
+        }}
+        refund={activeRefundForPrint}
+        originalSale={
+          activeRefundForPrint 
+            ? sales.find(s => s.id === activeRefundForPrint.originalSaleId || s.invoiceNumber === activeRefundForPrint.originalInvoiceNumber || s.invoiceNumber === activeRefundForPrint.invoiceNumber) 
+            : null
+        }
+      />
     </div>
   );
 };

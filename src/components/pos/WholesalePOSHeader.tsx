@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { Building2, CreditCard, ShieldAlert, UserCheck, Search, Plus, Layers, AlertCircle, ArrowUpRight } from 'lucide-react';
+import { Building2, CreditCard, ShieldAlert, UserCheck, Search, Plus, Layers, AlertCircle, ArrowUpRight, X } from 'lucide-react';
 import { Customer } from '../../types';
 
 export const WholesalePOSHeader: React.FC = () => {
@@ -38,15 +38,15 @@ export const WholesalePOSHeader: React.FC = () => {
   const debtUsagePercentage = Math.min(100, Math.round((currentDebt / creditLimit) * 100));
 
   return (
-    <div className="bg-gradient-to-r from-amber-900 via-amber-950 to-slate-900 text-white rounded-3xl p-3 sm:p-4 shadow-md border border-amber-700/50 space-y-3">
+    <div className="bg-gradient-to-r from-amber-900 via-amber-950 to-slate-900 text-white rounded-3xl p-3 sm:p-4 shadow-md border border-amber-700/50 space-y-3 max-w-full overflow-hidden">
       {/* Top Row: Wholesale Account & Dealer Selection */}
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+          <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
             <Building2 className="w-5 h-5" />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-xs font-black text-amber-400 uppercase tracking-wide">
                 {language === 'ar' ? 'نظام تجارة وتوزيع الجملة (B2B)' : 'Wholesale Distribution POS'}
               </span>
@@ -54,7 +54,7 @@ export const WholesalePOSHeader: React.FC = () => {
                 {posTradeMode === 'wholesale' ? 'أسعار الجملة مفعلة' : 'أسعار التجزئة'}
               </span>
             </div>
-            <h3 className="text-sm font-extrabold text-white">
+            <h3 className="text-sm font-extrabold text-white truncate">
               {selectedCustomer ? (selectedCustomer.companyName || selectedCustomer.name) : (language === 'ar' ? 'مبيعات الجملة المباشرة (عميل نقدي)' : 'Cash Wholesale Sale')}
             </h3>
           </div>
@@ -65,7 +65,7 @@ export const WholesalePOSHeader: React.FC = () => {
           <button
             type="button"
             onClick={() => setIsMerchantDropdownOpen(!isMerchantDropdownOpen)}
-            className="flex items-center gap-2 px-3.5 py-2 bg-amber-800/80 hover:bg-amber-700 text-white rounded-xl text-xs font-bold border border-amber-600/60 shadow-xs transition-all active:scale-95"
+            className="flex items-center gap-2 px-3.5 py-2 min-h-[40px] bg-amber-800/80 hover:bg-amber-700 text-white rounded-xl text-xs font-bold border border-amber-600/60 shadow-xs transition-all active:scale-95 cursor-pointer"
           >
             <UserCheck className="w-4 h-4 text-amber-300" />
             <span>
@@ -79,15 +79,17 @@ export const WholesalePOSHeader: React.FC = () => {
           {isMerchantDropdownOpen && (
             <div className="absolute top-full end-0 mt-2 w-80 sm:w-96 bg-slate-900 text-white rounded-2xl p-3.5 shadow-2xl border border-slate-700 z-50 animate-in fade-in zoom-in-95">
               <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-800">
-                <span className="text-xs font-black text-amber-400">
-                  {language === 'ar' ? 'سجل التجار والموزعين المعتمدين' : 'Authorized Merchant Accounts'}
+                <span className="text-xs font-black text-amber-400 flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-amber-400" />
+                  <span>{language === 'ar' ? 'سجل التجار والموزعين المعتمدين' : 'Authorized Merchant Accounts'}</span>
                 </span>
                 <button
                   type="button"
                   onClick={() => setIsMerchantDropdownOpen(false)}
-                  className="text-slate-400 hover:text-white text-xs font-bold"
+                  className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+                  aria-label="إغلاق"
                 >
-                  ✕
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 

@@ -28,7 +28,8 @@ import {
   Layers,
   ArrowUpRight,
   Maximize2,
-  ArrowLeftRight
+  ArrowLeftRight,
+  KeyRound
 } from 'lucide-react';
 
 export const DevicesHubView: React.FC = () => {
@@ -45,7 +46,8 @@ export const DevicesHubView: React.FC = () => {
     notify,
     t, 
     language,
-    setIsDataTransferModalOpen
+    setIsDataTransferModalOpen,
+    setIsConnectToCashierModalOpen
   } = useApp();
 
   const [isPairModalOpen, setIsPairModalOpen] = useState(false);
@@ -175,6 +177,16 @@ export const DevicesHubView: React.FC = () => {
           >
             <ArrowLeftRight className="w-3.5 h-3.5 text-indigo-500" />
             <span>نقل البيانات (كود الربط)</span>
+          </button>
+
+          <button
+            id="btn-pair-by-cashier-code"
+            onClick={() => setIsConnectToCashierModalOpen(true)}
+            className="py-2.5 px-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/70 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-xs font-black flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-95"
+            title="ربط هذه الشاشة أو جهاز جديد بإدخال الكود المعروض على شاشة الكاشير"
+          >
+            <KeyRound className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            <span>{language === 'ar' ? 'ربط بكود الكاشير' : 'Connect via Cashier PIN'}</span>
           </button>
 
           <button

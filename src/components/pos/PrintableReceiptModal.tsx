@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Sale } from '../../types';
 import QRCode from 'qrcode';
-import { Printer, Download, CheckCircle, X, Sparkles } from 'lucide-react';
+import { Printer, Download, CheckCircle, X, Sparkles, Barcode as BarcodeIcon } from 'lucide-react';
+import { generateBarcodeSvg } from '../../utils/barcodeUtils';
 
 interface PrintableReceiptModalProps {
   isOpen: boolean;
@@ -239,10 +240,31 @@ export const PrintableReceiptModal: React.FC<PrintableReceiptModalProps> = ({
               </div>
             )}
 
+            {/* 1D Invoice Barcode for Return Scanners & Cashiers */}
+            <div className="my-2 flex flex-col items-center justify-center">
+              <div
+                className="max-w-full overflow-hidden flex justify-center"
+                dangerouslySetInnerHTML={{
+                  __html: generateBarcodeSvg(sale.invoiceNumber, {
+                    width: 250,
+                    height: 52,
+                    fontSize: 10,
+                    showText: true,
+                    barColor: '#000000',
+                    bgColor: '#ffffff'
+                  })
+                }}
+              />
+              <span className="text-[9px] text-slate-500 font-mono mt-0.5 flex items-center gap-1">
+                <BarcodeIcon className="w-3 h-3 text-slate-400" />
+                باركود استرجاع الفاتورة ({sale.invoiceNumber})
+              </span>
+            </div>
+
             {/* QR Code */}
             {qrCodeDataUrl && (
-              <div className="my-3 flex flex-col items-center justify-center">
-                <img src={qrCodeDataUrl} alt="Receipt QR" className="w-24 h-24" />
+              <div className="my-2 flex flex-col items-center justify-center">
+                <img src={qrCodeDataUrl} alt="Receipt QR" className="w-22 h-22" />
                 <span className="text-[9px] text-slate-400 font-mono mt-0.5">مسح للتحقق من الفاتورة</span>
               </div>
             )}

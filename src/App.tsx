@@ -24,6 +24,8 @@ import { CustomerFacingDisplayView } from './components/devices/CustomerFacingDi
 import { MobileWaiterView } from './components/devices/MobileWaiterView';
 import { MobileStockScannerView } from './components/devices/MobileStockScannerView';
 import { DeviceDataTransferModal } from './components/devices/DeviceDataTransferModal';
+import { ConnectToCashierModal } from './components/devices/ConnectToCashierModal';
+import { DataUsageSummaryWidget } from './components/common/DataUsageSummaryWidget';
 import { PinSwitchModal } from './components/modals/PinSwitchModal';
 import { GlobalSearchModal } from './components/modals/GlobalSearchModal';
 import { ModeSelectionModal } from './components/modals/ModeSelectionModal';
@@ -43,6 +45,8 @@ const AppContent: React.FC = () => {
     setDedicatedDeviceRole,
     isDataTransferModalOpen,
     setIsDataTransferModalOpen,
+    isConnectToCashierModalOpen,
+    setIsConnectToCashierModalOpen,
     offlineQueueCount,
     isSyncingOffline,
     syncOfflineQueueNow,
@@ -179,11 +183,16 @@ const AppContent: React.FC = () => {
         onClose={() => setIsDataTransferModalOpen(false)}
       />
 
+      <ConnectToCashierModal
+        isOpen={isConnectToCashierModalOpen}
+        onClose={() => setIsConnectToCashierModalOpen(false)}
+      />
+
       {/* Floating Offline Sync & Storage Status Banner */}
       {(!isOnline || offlineQueueCount > 0) && (
         <aside
           aria-label="حالة الاتصال والمزامنة"
-          className="fixed bottom-18 md:bottom-5 start-4 z-40 flex items-center gap-3 py-2 px-3.5 rounded-2xl bg-slate-900/90 dark:bg-slate-800/95 text-white backdrop-blur-md shadow-xl border border-slate-700/80 text-xs animate-in slide-in-from-bottom-3 duration-300"
+          className="fixed bottom-18 md:bottom-5 start-4 z-40 flex flex-wrap items-center gap-2.5 py-2 px-3 rounded-2xl bg-slate-900/95 dark:bg-slate-800/95 text-white backdrop-blur-md shadow-2xl border border-slate-700/80 text-xs animate-in slide-in-from-bottom-3 duration-300"
         >
           <div className="flex items-center gap-2">
             {!isOnline ? (
@@ -192,49 +201,49 @@ const AppContent: React.FC = () => {
               <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
             )}
             <div>
-              <div className="font-bold flex items-center gap-1.5">
+              <div className="font-bold flex items-center gap-1.5 leading-tight">
                 {!isOnline ? (
                   <>
                     <WifiOff className="w-3.5 h-3.5 text-amber-400" />
-                    <span>وضع أوفلاين (IndexedDB نشط)</span>
+                    <span>وضع أوفلاين (IndexedDB)</span>
                   </>
                 ) : (
                   <>
                     <Database className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>متصل — عمليات قيد المزامنة</span>
+                    <span>متصل — مزامنة مضغوطة</span>
                   </>
                 )}
               </div>
-              {offlineQueueCount > 0 && (
-                <div className="text-[11px] text-slate-300">
-                  {offlineQueueCount} عملية معلقة بانتظار المزامنة مع الخادم
-                </div>
-              )}
             </div>
           </div>
 
-          <div className="flex items-center gap-2 border-s border-slate-700 ps-2.5">
+          {/* Embedded Data-Usage Summary Widget */}
+          <DataUsageSummaryWidget
+            onOpenDataTransfer={() => setIsDataTransferModalOpen(true)}
+          />
+
+          <div className="flex items-center gap-1.5 border-s border-slate-700 ps-2">
             {isOnline && (
               <button
                 type="button"
                 onClick={syncOfflineQueueNow}
                 disabled={isSyncingOffline}
-                className="flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
-                title="مزامنة العمليات المعلقة الآن"
+                className="flex items-center gap-1 py-1 px-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
+                title="مزامنة العمليات المعلقة الآن بحزمة مضغوطة"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isSyncingOffline ? 'animate-spin' : ''}`} />
-                <span>{isSyncingOffline ? 'جارِ المزامنة...' : 'مزامنة الآن'}</span>
+                <span>{isSyncingOffline ? 'جارِ...' : 'مزامنة'}</span>
               </button>
             )}
 
             <button
               type="button"
               onClick={() => setIsDataTransferModalOpen(true)}
-              className="flex items-center gap-1.5 py-1 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
+              className="flex items-center gap-1 py-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
               title="نقل البيانات إلى جهاز آخر عبر كود الربط"
             >
               <ArrowLeftRight className="w-3.5 h-3.5 text-amber-400" />
-              <span className="hidden sm:inline">نقل بكود</span>
+              <span className="hidden sm:inline">نقل</span>
             </button>
           </div>
         </aside>

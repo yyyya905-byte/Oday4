@@ -32,7 +32,8 @@ export const DevicePairingModal: React.FC<DevicePairingModalProps> = ({ isOpen, 
     masterPairingPin, 
     refreshMasterPin, 
     pairDevice,
-    settings 
+    settings,
+    setIsConnectToCashierModalOpen
   } = useApp();
 
   const [selectedRole, setSelectedRole] = useState<DeviceRole>('kitchen_display');
@@ -165,7 +166,34 @@ export const DevicePairingModal: React.FC<DevicePairingModalProps> = ({ isOpen, 
         </div>
 
         {/* Modal Body */}
-        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-5 flex-1">
+          {/* Quick link to enter Cashier PIN */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent border border-emerald-500/30">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-emerald-500 text-white shadow-xs">
+                <KeyRound className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-xs font-black text-slate-900 dark:text-white block">
+                  {language === 'ar' ? 'هل تريد ربط شاشة تابعة عبر إدخال كود الكاشير؟' : 'Connecting a secondary screen via Cashier PIN?'}
+                </span>
+                <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {language === 'ar' ? 'أدخل الرمز المكون من 6 أرقام المعروض على جهاز الكاشير الرئيسي' : 'Enter the 6-digit PIN code displayed on the master register'}
+                </span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                setIsConnectToCashierModalOpen(true);
+              }}
+              className="py-2 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-black transition-all cursor-pointer shadow-xs shrink-0"
+            >
+              {language === 'ar' ? 'إدخال كود الكاشير 🔑' : 'Enter Cashier PIN 🔑'}
+            </button>
+          </div>
+
           {/* Step 1: Select Terminal Role */}
           <div>
             <label className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-2.5 block">

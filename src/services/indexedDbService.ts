@@ -306,46 +306,155 @@ class IndexedDbService {
   }
 
   /**
-   * Automatically synchronizes all pending offline items to the server
+   * Helper to compress JSON data into gzip base64 using standard browser CompressionStream
+   */
+  private async compressBatchPayload(data: any): Promise<{
+    isCompressed: boolean;
+    compression?: 'gzip';
+    payload: string;
+    originalSizeBytes: number;
+    compressedSizeBytes: number;
+    compressionRatio: string;
+    savedBandwidthKb: string;
+  }> {
+    const jsonStr = JSON.stringify(data);
+    const encoder = new TextEncoder();
+    const rawBytes = encoder.encode(jsonStr);
+    const originalSizeBytes = rawBytes.byteLength;
+
+    if (typeof CompressionStream !== 'undefined') {
+      try {
+        const cs = new CompressionStream('gzip');
+        const writer = cs.writable.getWriter();
+        writer.write(rawBytes);
+        writer.close();
+
+        const response = new Response(cs.readable);
+        const blob = await response.blob();
+        const arrayBuffer = await blob.arrayBuffer();
+        const uint8 = new Uint8Array(arrayBuffer);
+        const compressedSizeBytes = uint8.byteLength;
+
+        // Convert Uint8Array to base64 string safely
+        let binary = '';
+        const chunkSize = 8192;
+        for (let i = 0; i < uint8.length; i += chunkSize) {
+          const chunk = uint8.subarray(i, i + chunkSize);
+          binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+        }
+        const base64 = btoa(binary);
+        const saved = Math.max(0, originalSizeBytes - compressedSizeBytes);
+        const ratio = originalSizeBytes > 0 ? ((saved / originalSizeBytes) * 100).toFixed(1) : '0';
+
+        return {
+          isCompressed: true,
+          compression: 'gzip',
+          payload: base64,
+          originalSizeBytes,
+          compressedSizeBytes,
+          compressionRatio: `${ratio}%`,
+          savedBandwidthKb: (saved / 1024).toFixed(2),
+        };
+      } catch (err) {
+        console.warn('[IndexedDB Sync] Native compression failed, using plain JSON:', err);
+      }
+    }
+
+    return {
+      isCompressed: false,
+      payload: jsonStr,
+      originalSizeBytes,
+      compressedSizeBytes: originalSizeBytes,
+      compressionRatio: '0%',
+      savedBandwidthKb: '0.00',
+    };
+  }
+
+  /**
+   * Automatically synchronizes all pending offline items to the server in a single compressed batch HTTP request
    */
   async syncOfflineQueueToServer(): Promise<{
     syncedCount: number;
     failedCount: number;
     total: number;
+    wasCompressed?: boolean;
+    compressionRatio?: string;
+    savedBandwidthKb?: string;
+    batchId?: string;
   }> {
     const pending = await this.getPendingOfflineQueue();
     if (pending.length === 0) {
       return { syncedCount: 0, failedCount: 0, total: 0 };
     }
 
+    const batchId = `batch_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const batchEnvelope = {
+      batchId,
+      timestamp: new Date().toISOString(),
+      clientVersion: '1.2.0',
+      itemsCount: pending.length,
+      items: pending,
+    };
+
     let syncedCount = 0;
     let failedCount = 0;
+    let wasCompressed = false;
+    let compressionRatio = '0%';
+    let savedBandwidthKb = '0.00';
 
     try {
-      // Send batch to server
+      // 1. Compress the batch payload to reduce network latency and data consumption
+      const compressionResult = await this.compressBatchPayload(batchEnvelope);
+      wasCompressed = compressionResult.isCompressed;
+      compressionRatio = compressionResult.compressionRatio;
+      savedBandwidthKb = compressionResult.savedBandwidthKb;
+
+      let requestBody: any;
+      if (compressionResult.isCompressed) {
+        requestBody = {
+          isCompressed: true,
+          compression: compressionResult.compression,
+          batchId,
+          originalSizeBytes: compressionResult.originalSizeBytes,
+          compressedSizeBytes: compressionResult.compressedSizeBytes,
+          payload: compressionResult.payload,
+        };
+      } else {
+        requestBody = {
+          isCompressed: false,
+          batchId,
+          items: pending,
+        };
+      }
+
+      // 2. Transmit the single compressed batch HTTP request
       const response = await fetch('/api/sync/offline-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ items: pending }),
+        body: JSON.stringify(requestBody),
       });
 
       if (response.ok) {
         const result = await response.json();
-        // Mark all items as synced in IndexedDB
+        const confirmedIds: Set<number> = new Set(result.syncedIds || []);
+
+        // 3. Mark items as synced in IndexedDB
         for (const item of pending) {
           if (item.id) {
-            await this.updateQueueItemStatus(item.id, 'synced');
-            syncedCount++;
+            if (confirmedIds.size === 0 || confirmedIds.has(item.id)) {
+              await this.updateQueueItemStatus(item.id, 'synced');
+              syncedCount++;
+            }
           }
         }
 
-        // Clean up old synced items to preserve storage
+        // 4. Clean up old synced items to preserve storage
         await this.purgeSyncedQueueItems();
       } else {
         throw new Error(`Server responded with ${response.status}`);
       }
     } catch (err: any) {
-      console.warn('Background sync failed, will retry later:', err);
+      console.warn('[IndexedDB Sync] Compressed batch sync failed, will retry later:', err);
       for (const item of pending) {
         if (item.id) {
           await this.updateQueueItemStatus(item.id, 'failed', err.message);
@@ -354,7 +463,15 @@ class IndexedDbService {
       }
     }
 
-    return { syncedCount, failedCount, total: pending.length };
+    return {
+      syncedCount,
+      failedCount,
+      total: pending.length,
+      wasCompressed,
+      compressionRatio,
+      savedBandwidthKb,
+      batchId,
+    };
   }
 
   /**
@@ -428,6 +545,12 @@ class IndexedDbService {
         usageBytes = estimate.usage || 0;
         quotaBytes = estimate.quota || 0;
         percentUsed = quotaBytes > 0 ? Math.round((usageBytes / quotaBytes) * 100) : 0;
+      }
+
+      // If browser estimate API returns 0 or is constrained in sandbox iframe, approximate real IndexedDB size
+      if (usageBytes <= 0) {
+        const rawJson = JSON.stringify({ products, customers, sales, queue });
+        usageBytes = Math.max(12800, rawJson.length * 2);
       }
 
       const meta = await this.getOne<any>('app_meta', 'last_cache_timestamp');
@@ -506,3 +629,10 @@ class IndexedDbService {
 }
 
 export const indexedDbService = new IndexedDbService();
+
+export function formatStorageSize(bytes: number): string {
+  if (!bytes || bytes <= 0) return '0 KB';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}

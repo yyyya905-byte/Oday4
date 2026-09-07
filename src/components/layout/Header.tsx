@@ -27,7 +27,8 @@ import {
   Coins,
   ArrowLeftRight,
   Database,
-  RefreshCw
+  RefreshCw,
+  MoreVertical
 } from 'lucide-react';
 import { PinSwitchModal } from '../modals/PinSwitchModal';
 import { ExchangeBulletinBar } from '../currency/ExchangeBulletinBar';
@@ -64,6 +65,7 @@ export const Header: React.FC = () => {
   const [isNotifDropdownOpen, setIsNotifDropdownOpen] = useState(false);
   const [isBulletinModalOpen, setIsBulletinModalOpen] = useState(false);
   const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
+  const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false);
 
   const unreadCount = notifications.filter(n => !n.read).length;
   const onlineDevicesCount = devices.filter(d => d.isOnline).length;
@@ -155,16 +157,16 @@ export const Header: React.FC = () => {
       </div>
 
       {/* Right / End Section: Status & Controls */}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1.5 sm:gap-2">
         {/* Currency & Exchange Bulletin Button */}
         <button
           id="btn-header-currency-bulletin"
           onClick={() => setIsBulletinModalOpen(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all"
+          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
           title="نشرة أسعار الصرف وحاسبة العملات"
         >
           <Coins className="w-3.5 h-3.5 text-amber-500" />
-          <span className="hidden sm:inline">نشرة الصرف</span>
+          <span className="hidden md:inline">نشرة الصرف</span>
           <span className="text-[10px] font-black bg-amber-500/20 text-amber-600 dark:text-amber-400 px-1.5 py-0.2 rounded-md font-mono">
             {settings.currency.symbol}
           </span>
@@ -174,22 +176,22 @@ export const Header: React.FC = () => {
         <button
           id="btn-header-barcode-printer"
           onClick={() => setIsBarcodeModalOpen(true)}
-          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all"
+          className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
           title="مصمم وطباعة ملصقات الباركود للمنتجات"
         >
           <BarcodeIcon className="w-3.5 h-3.5 text-amber-500" />
-          <span className="hidden md:inline">الباركود</span>
+          <span className="hidden lg:inline">الباركود</span>
         </button>
 
         {/* Linked Devices Hub Button */}
         <button
           id="btn-header-devices-hub"
           onClick={() => setActiveTab('devices')}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all"
+          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
           title={language === 'ar' ? 'ربط وإدارة الأجهزة والشاشات' : 'Multi-Device Hub'}
         >
           <Radio className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-          <span className="hidden sm:inline">{language === 'ar' ? 'الأجهزة' : 'Devices'}</span>
+          <span className="hidden md:inline">{language === 'ar' ? 'الأجهزة' : 'Devices'}</span>
           <span className="text-[10px] font-black bg-emerald-500 text-white px-1.5 py-0.2 rounded-full">
             {onlineDevicesCount}
           </span>
@@ -210,23 +212,111 @@ export const Header: React.FC = () => {
         <button
           id="btn-header-gdrive-sync"
           onClick={() => setActiveTab('settings')}
-          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all"
+          className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
           title="النسخ الاحتياطي السحابي (Google Drive)"
         >
           <Cloud className="w-3.5 h-3.5 text-amber-500" />
-          <span className="hidden md:inline">{settings.googleDriveConnected ? 'سحابة Google' : 'نسخ Google'}</span>
+          <span className="hidden xl:inline">{settings.googleDriveConnected ? 'سحابة Google' : 'نسخ Google'}</span>
         </button>
 
         {/* Quick Gemini AI Engine Button */}
         <button
           id="btn-header-gemini-ai"
           onClick={() => setActiveTab('ai')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white text-xs font-black shadow-xs hover:scale-105 active:scale-95 transition-all"
+          className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white text-xs font-black shadow-xs hover:scale-105 active:scale-95 transition-all cursor-pointer"
           title={language === 'ar' ? 'المساعد الذكي (Gemini AI)' : 'AI Intelligence (Gemini)'}
         >
           <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-          <span className="hidden md:inline">{language === 'ar' ? 'الذكاء الاصطناعي' : 'Gemini AI'}</span>
+          <span className="hidden lg:inline">{language === 'ar' ? 'الذكاء الاصطناعي' : 'Gemini AI'}</span>
         </button>
+
+        {/* Mobile Quick Tools Menu Button */}
+        <div className="sm:hidden relative">
+          <button
+            type="button"
+            id="btn-header-mobile-tools"
+            onClick={() => setIsMobileToolsOpen(!isMobileToolsOpen)}
+            className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-90 cursor-pointer"
+            title="أدوات وميزات إضافية"
+            aria-label="أدوات وميزات إضافية"
+          >
+            <MoreVertical className="w-5 h-5 text-amber-500" />
+          </button>
+
+          {isMobileToolsOpen && (
+            <div className="absolute end-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 z-50 p-2 space-y-1 animate-in fade-in slide-in-from-top-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBulletinModalOpen(true);
+                  setIsMobileToolsOpen(false);
+                }}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold text-start cursor-pointer active:scale-95"
+              >
+                <div className="flex items-center gap-2">
+                  <Coins className="w-4 h-4 text-amber-500" />
+                  <span>نشرة أسعار الصرف</span>
+                </div>
+                <span className="text-[10px] font-mono font-black text-amber-600 dark:text-amber-400">
+                  {settings.currency.symbol}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDataTransferModalOpen(true);
+                  setIsMobileToolsOpen(false);
+                }}
+                className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold text-start cursor-pointer active:scale-95"
+              >
+                <ArrowLeftRight className="w-4 h-4 text-indigo-500" />
+                <span>نقل البيانات بكود ربط</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('devices');
+                  setIsMobileToolsOpen(false);
+                }}
+                className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold text-start cursor-pointer active:scale-95"
+              >
+                <div className="flex items-center gap-2">
+                  <Radio className="w-4 h-4 text-emerald-500" />
+                  <span>الأجهزة والشاشات المتصلة</span>
+                </div>
+                <span className="text-[10px] font-black bg-emerald-500 text-white px-1.5 py-0.2 rounded-full">
+                  {onlineDevicesCount}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('ai');
+                  setIsMobileToolsOpen(false);
+                }}
+                className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold text-start cursor-pointer active:scale-95"
+              >
+                <Sparkles className="w-4 h-4 text-amber-500" />
+                <span>المساعد الذكي (Gemini AI)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBarcodeModalOpen(true);
+                  setIsMobileToolsOpen(false);
+                }}
+                className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold text-start cursor-pointer active:scale-95"
+              >
+                <BarcodeIcon className="w-4 h-4 text-slate-500" />
+                <span>مصمم ملصقات الباركود</span>
+              </button>
+            </div>
+          )}
+        </div>
 
         {/* Network Online/Offline & Sync Status */}
         <div 

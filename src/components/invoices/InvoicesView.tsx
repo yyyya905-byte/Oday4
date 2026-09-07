@@ -25,7 +25,8 @@ export const InvoicesView: React.FC = () => {
     t,
     language,
     settings,
-    setActiveTab
+    setActiveTab,
+    navigateToReturnWithInvoice
   } = useApp();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -134,6 +135,13 @@ export const InvoicesView: React.FC = () => {
                     </td>
                     <td className="py-3 px-4 text-end">
                       <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => navigateToReturnWithInvoice(sale)}
+                          className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                          title="إرجاع بضاعة من الفاتورة"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => handleViewDetails(sale)}
                           className="p-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
@@ -262,7 +270,7 @@ export const InvoicesView: React.FC = () => {
                 <button
                   onClick={() => {
                     setIsDetailModalOpen(false);
-                    setActiveTab('returns');
+                    navigateToReturnWithInvoice(selectedSale);
                   }}
                   className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition-all flex items-center gap-1.5"
                 >

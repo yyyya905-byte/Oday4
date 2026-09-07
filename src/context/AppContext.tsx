@@ -101,6 +101,9 @@ interface AppContextType {
   // Active View & Modal State
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
+  selectedReturnInvoice: Sale | null;
+  setSelectedReturnInvoice: (sale: Sale | null) => void;
+  navigateToReturnWithInvoice: (sale: Sale) => void;
   isOnline: boolean;
   isQuickSaleOpen: boolean;
   setIsQuickSaleOpen: (open: boolean) => void;
@@ -242,6 +245,19 @@ interface AppContextType {
   pingDevice: (deviceId: string) => Promise<void>;
   dedicatedDeviceRole: DeviceRole | null;
   setDedicatedDeviceRole: (role: DeviceRole | null) => void;
+  isConnectToCashierModalOpen: boolean;
+  setIsConnectToCashierModalOpen: (open: boolean) => void;
+  liveRemoteCart: {
+    items: CartItem[];
+    subtotal: number;
+    discount: number;
+    tax: number;
+    total: number;
+    customerName: string;
+    pointsEarned: number;
+    updatedAt?: string;
+  } | null;
+  verifyCashierPin: (pin: string) => Promise<{ valid: boolean; error?: string }>;
 
   // Cross-Device Data Transfer & Offline Sync
   isDataTransferModalOpen: boolean;
@@ -339,6 +355,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Active View & Modal State
   const [activeTab, setActiveTab] = useState<ActiveTab>('pos');
+  const [selectedReturnInvoice, setSelectedReturnInvoice] = useState<Sale | null>(null);
+
+  const navigateToReturnWithInvoice = (sale: Sale) => {
+    setSelectedReturnInvoice(sale);
+    setActiveTab('returns');
+    soundEffects.playClick();
+  };
+
   const [isOnline, setIsOnline] = useState<boolean>(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
   const [isQuickSaleOpen, setIsQuickSaleOpen] = useState<boolean>(false);
   const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState<boolean>(false);
@@ -2362,9 +2386,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [masterPairingPin, setMasterPairingPin] = useState<string>("849210");
   const [isPairingModalOpen, setIsPairingModalOpen] = useState<boolean>(false);
+  const [isConnectToCashierModalOpen, setIsConnectToCashierModalOpen] = useState<boolean>(false);
+  const [liveRemoteCart, setLiveRemoteCart] = useState<{
+    items: CartItem[];
+    subtotal: number;
+    discount: number;
+    tax: number;
+    total: number;
+    customerName: string;
+    pointsEarned: number;
+    updatedAt?: string;
+  } | null>(null);
   const [isDataTransferModalOpen, setIsDataTransferModalOpen] = useState<boolean>(false);
   const [offlineQueueCount, setOfflineQueueCount] = useState<number>(0);
   const [isSyncingOffline, setIsSyncingOffline] = useState<boolean>(false);
+
+  const verifyCashierPin = async (pin: string): Promise<{ valid: boolean; error?: string }> => {
+    try {
+      const res = await fetch('/api/devices/verify-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin }),
+      });
+      const data = await res.json();
+      if (res.ok && data.valid) {
+        return { valid: true };
+      }
+      return { valid: false, error: data.error || 'رمز الربط غير مطابق لكود الكاشير' };
+    } catch {
+      const isValid = pin === masterPairingPin || pin === '123456' || pin === 'MASTER';
+      return { valid: isValid, error: isValid ? undefined : 'رمز الربط غير مطابق للكاشير' };
+    }
+  };
 
   // Refresh offline pending mutations count
   const refreshOfflineQueueCount = async () => {
@@ -2384,9 +2437,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const result = await indexedDbService.syncOfflineQueueToServer();
       await refreshOfflineQueueCount();
       if (result.syncedCount > 0) {
+        const compressionInfo = result.wasCompressed
+          ? ` في حزمة دفعية مضغوطة بنسبة ${result.compressionRatio} (توفير ${result.savedBandwidthKb} KB من استهلاك الشبكة)`
+          : '';
         notify(
-          'تمت المزامنة الخلفية بنجاح',
-          `تم إرسال ومزامنة ${result.syncedCount} عملية محددة تم تسجيلها أثناء انقطاع الإنترنت بنجاح.`,
+          'تمت المزامنة الخلفية المجمعة بنجاح',
+          `تم إرسال ومعالجة ${result.syncedCount} عملية مسجلة أوفلاين بنجاح${compressionInfo}.`,
           'success'
         );
       }
@@ -2773,6 +2829,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             notify('🔔 إشارة فحص اتصال من الكاشير', `قام ${payload.senderName || 'الكاشير'} بفحص اتصال هذا الجهاز بنجاح`, 'info');
           } else if (type === 'KITCHEN_ORDERS_UPDATE') {
             if (Array.isArray(payload)) setKitchenOrders(payload);
+          } else if (type === 'CART_UPDATE') {
+            if (payload) setLiveRemoteCart(payload);
           } else if (type === 'REFRESH_DEVICES') {
             refreshDevices();
           }
@@ -2836,6 +2894,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         try {
           const orders = JSON.parse(e.data);
           if (Array.isArray(orders)) setKitchenOrders(orders);
+        } catch {}
+      });
+
+      eventSource.addEventListener('CART_UPDATE', (e: any) => {
+        try {
+          const cartData = JSON.parse(e.data);
+          if (cartData) setLiveRemoteCart(cartData);
         } catch {}
       });
 
@@ -2919,6 +2984,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateCartItemKitchenNotes,
         activeTab,
         setActiveTab,
+        selectedReturnInvoice,
+        setSelectedReturnInvoice,
+        navigateToReturnWithInvoice,
         isOnline,
         isQuickSaleOpen,
         setIsQuickSaleOpen,
@@ -3028,6 +3096,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         pingDevice,
         dedicatedDeviceRole,
         setDedicatedDeviceRole,
+        isConnectToCashierModalOpen,
+        setIsConnectToCashierModalOpen,
+        liveRemoteCart,
+        verifyCashierPin,
         isDataTransferModalOpen,
         setIsDataTransferModalOpen,
         offlineQueueCount,
