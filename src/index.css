@@ -6,8 +6,14 @@
   :root {
     --font-cairo: 'Cairo', 'Plus Jakarta Sans', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
-    --bg-light-canvas: #f8fafc;
+    /* Harmonious, calm, and serene light mode palette */
+    --bg-light-canvas: #f6f8fa;
+    --bg-light-card: #ffffff;
     --border-light-subtle: #e2e8f0;
+    --text-light-primary: #1e293b;
+    --text-light-secondary: #475569;
+    --text-light-muted: #64748b;
+    --ps-brightness: 0.85;
   }
 
   body {
@@ -15,7 +21,33 @@
     -webkit-tap-highlight-color: transparent;
     user-select: none;
     background-color: var(--bg-light-canvas);
-    color: #0f172a;
+    color: var(--text-light-primary);
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  /* Light mode calm card, table, and border harmony */
+  :root:not(.dark) {
+    color-scheme: light;
+  }
+
+  :root:not(.dark) .bg-slate-50 {
+    background-color: #f8fafc;
+  }
+
+  :root:not(.dark) .bg-white {
+    background-color: #ffffff;
+  }
+
+  :root:not(.dark) .text-slate-900 {
+    color: #1e293b;
+  }
+
+  :root:not(.dark) .text-slate-700 {
+    color: #334155;
+  }
+
+  :root:not(.dark) .border-slate-200 {
+    border-color: #e2e8f0;
   }
 
   .dark body {
@@ -26,6 +58,41 @@
   input, textarea, [contenteditable="true"] {
     user-select: text;
   }
+}
+
+/* =========================================================
+   Power Saving & Eco Battery Saver Mode
+   Reduces screen backlight power and halts GPU/CPU rendering
+   ========================================================= */
+.power-saving-active {
+  /* Screen dimming to conserve LCD/OLED backlight energy */
+  filter: brightness(var(--ps-brightness, 0.85)) contrast(0.96);
+  transition: filter 0.3s ease;
+}
+
+/* Standby deep dimming when idle */
+.power-saving-standby {
+  filter: brightness(0.42) contrast(0.90) !important;
+  transition: filter 0.4s ease;
+}
+
+/* Disable expensive animations, transitions, and pulsing badges in Power Saving */
+.power-saving-active *,
+.power-saving-active *::before,
+.power-saving-active *::after {
+  animation-duration: 0.001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.001ms !important;
+}
+
+/* Disable GPU-heavy backdrop filters in Power Saving */
+.power-saving-active .backdrop-blur-md,
+.power-saving-active .backdrop-blur-sm,
+.power-saving-active .backdrop-blur-lg,
+.power-saving-active .backdrop-blur-xl,
+.power-saving-active .backdrop-blur-xs {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 /* Custom Scrollbar for POS */
@@ -72,12 +139,14 @@
   }
 
   #printable-receipt, #printable-receipt *,
+  #printable-return-voucher, #printable-return-voucher *,
   #printable-calibration-sheet, #printable-calibration-sheet *,
   #printable-test-label, #printable-test-label * {
     visibility: visible;
   }
 
   #printable-receipt,
+  #printable-return-voucher,
   #printable-calibration-sheet,
   #printable-test-label {
     position: absolute;
@@ -85,7 +154,7 @@
     top: 0;
     width: 100%;
     margin: 0;
-    padding: 6px;
+    padding: 0 !important;
     background: #ffffff !important;
     color: #000000 !important;
     -webkit-print-color-adjust: exact !important;

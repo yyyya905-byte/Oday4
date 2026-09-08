@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { ActiveTab } from '../../types';
+import { canAccessTab, getRoleInfo } from '../../utils/permissions';
 import {
   ReceiptText,
   LayoutDashboard,
@@ -21,21 +22,26 @@ import {
   ShoppingBag,
   Cloud,
   Coins,
-  X
+  X,
+  ShieldCheck
 } from 'lucide-react';
 
 export const BottomNav: React.FC = () => {
-  const { activeTab, setActiveTab, t, cart } = useApp();
+  const { activeTab, setActiveTab, t, cart, currentUser } = useApp();
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
 
   const cartCount = cart.reduce((acc, it) => acc + it.quantity, 0);
+  const roleInfo = getRoleInfo(currentUser.role);
 
-  const mainTabs: { id: ActiveTab; label: string; icon: React.ElementType; badge?: number }[] = [
+  const candidateMainTabs: { id: ActiveTab; label: string; icon: React.ElementType; badge?: number }[] = [
     { id: 'pos', label: t('navPOS'), icon: ReceiptText, badge: cartCount > 0 ? cartCount : undefined },
     { id: 'trade', label: 'تجارة الجملة', icon: Building2 },
     { id: 'products', label: t('navProducts'), icon: Package },
+    { id: 'invoices', label: 'الفواتير', icon: FileSpreadsheet },
     { id: 'dashboard', label: t('navDashboard'), icon: LayoutDashboard },
   ];
+
+  const mainTabs = candidateMainTabs.filter(tab => canAccessTab(tab.id, currentUser.role)).slice(0, 4);
 
   const categorizedMoreTabs = [
     {
@@ -67,7 +73,12 @@ export const BottomNav: React.FC = () => {
         { id: 'about' as ActiveTab, label: 'عن النظام', icon: Info },
       ]
     }
-  ];
+  ]
+    .map(cat => ({
+      ...cat,
+      items: cat.items.filter(item => canAccessTab(item.id, currentUser.role))
+    }))
+    .filter(cat => cat.items.length > 0);
 
   return (
     <>

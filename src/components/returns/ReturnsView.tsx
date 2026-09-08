@@ -47,7 +47,8 @@ export const ReturnsView: React.FC = () => {
     selectedReturnInvoice,
     setSelectedReturnInvoice,
     recordCustomerDebtPayment,
-    customers
+    customers,
+    products
   } = useApp();
 
   const [invoiceQuery, setInvoiceQuery] = useState('');
@@ -64,8 +65,28 @@ export const ReturnsView: React.FC = () => {
   const [isReturnReceiptOpen, setIsReturnReceiptOpen] = useState(false);
   const [activeRefundForPrint, setActiveRefundForPrint] = useState<any>(null);
   const [copiedInvoice, setCopiedInvoice] = useState(false);
+  const [lastScannedItemBanner, setLastScannedItemBanner] = useState<{
+    name: string;
+    code: string;
+    qty: number;
+  } | null>(null);
 
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Auto-focus search input on mount
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Auto-dismiss scanned item alert banner
+  useEffect(() => {
+    if (!lastScannedItemBanner) return;
+    const timer = setTimeout(() => setLastScannedItemBanner(null), 3000);
+    return () => clearTimeout(timer);
+  }, [lastScannedItemBanner]);
 
   // Check if an invoice was passed via navigation (e.g. from InvoicesView)
   useEffect(() => {
@@ -115,6 +136,125 @@ export const ReturnsView: React.FC = () => {
     }
 
     soundEffects.playClick();
+  };
+
+  // Global hardware barcode scanner reader (USB / Bluetooth / Wireless gun)
+  useEffect(() => {
+    let scanBuffer = '';
+    let lastKeyTime = 0;
+
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Don't intercept if a modal is open or typing in textarea
+      const target = e.target as HTMLElement | null;
+      const isEditingTextarea = target && target.tagName === 'TEXTAREA';
+      if (isScannerModalOpen || isReturnReceiptOpen || isEditingTextarea) return;
+
+      const currentTime = Date.now();
+      const isFast = (currentTime - lastKeyTime) < 80;
+      lastKeyTime = currentTime;
+
+      if (e.key === 'Enter') {
+        const candidate = (scanBuffer.trim() || invoiceQuery.trim());
+        if (candidate.length >= 2) {
+          const clean = candidate.toLowerCase();
+
+          // 1. Check if candidate matches an invoice barcode or QR payload
+          let targetInv = clean;
+          if (clean.startsWith('{') && clean.endsWith('}')) {
+            try {
+              const parsed = JSON.parse(candidate);
+              if (parsed.inv || parsed.invoiceNumber) {
+                targetInv = String(parsed.inv || parsed.invoiceNumber).toLowerCase();
+              }
+            } catch {}
+          }
+
+          const matchedSale = sales.find(s =>
+            s.invoiceNumber.toLowerCase() === targetInv ||
+            s.id.toLowerCase() === targetInv ||
+            s.invoiceNumber.toLowerCase() === clean
+          );
+
+          if (matchedSale) {
+            e.preventDefault();
+            soundEffects.playSuccess();
+            scanBuffer = '';
+            setInvoiceQuery(matchedSale.invoiceNumber);
+            loadInvoiceForReturn(matchedSale);
+            notify('تم مسح باركود فاتورة بنجاح!', `فاتورة #${matchedSale.invoiceNumber} للعميل ${matchedSale.customerName || 'نقدي'}`, 'success');
+            return;
+          }
+
+          // 2. If an invoice is ALREADY loaded, check if scanned barcode matches an item in this invoice!
+          if (selectedInvoice) {
+            const matchedItem = selectedInvoice.items.find(it => {
+              if (it.barcode && it.barcode.toLowerCase() === clean) return true;
+              if (it.productId.toLowerCase() === clean) return true;
+              const prod = products.find(p => p.id === it.productId);
+              if (prod) {
+                if (prod.barcode && prod.barcode.toLowerCase() === clean) return true;
+                if (prod.sku && prod.sku.toLowerCase() === clean) return true;
+                if (prod.identificationCodes?.some(c => c.toLowerCase() === clean)) return true;
+              }
+              return false;
+            });
+
+            if (matchedItem) {
+              e.preventDefault();
+              soundEffects.playBeep();
+
+              // Compute available qty for this item
+              const prevReturnsForSale = (refunds || []).filter(r => r.originalSaleId === selectedInvoice.id);
+              const previouslyReturned = prevReturnsForSale.reduce((acc, r) => {
+                const matching = (r.items || []).find(it => it.productId === matchedItem.productId);
+                return acc + (matching ? matching.quantity : 0);
+              }, 0);
+              const maxAvailable = Math.max(0, itemAvailableQtyFor(selectedInvoice, matchedItem));
+
+              if (maxAvailable <= 0) {
+                notify('تنبيه', `الصنف "${matchedItem.productNameAr}" تم استرجاعه بالكامل مسبقاً!`, 'warning');
+              } else {
+                setSelectedItemIds(prev => ({ ...prev, [matchedItem.productId]: true }));
+                setReturnItems(prev => {
+                  const current = prev[matchedItem.productId] || 0;
+                  const nextVal = Math.min(maxAvailable, current + 1);
+                  setLastScannedItemBanner({
+                    name: matchedItem.productNameAr,
+                    code: candidate,
+                    qty: nextVal
+                  });
+                  return { ...prev, [matchedItem.productId]: nextVal };
+                });
+                notify('تم تحديد صنف بالباركود', `${matchedItem.productNameAr} (الكمية: +1)`, 'info');
+              }
+              scanBuffer = '';
+              return;
+            } else {
+              notify('تنبيه', `الصنف ذو الباركود "${candidate}" غير موجود ضمن أصناف هذه الفاتورة!`, 'warning');
+            }
+          }
+        }
+        scanBuffer = '';
+      } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
+        if (isFast || scanBuffer.length > 0) {
+          scanBuffer += e.key;
+        } else {
+          scanBuffer = e.key;
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [sales, selectedInvoice, isScannerModalOpen, isReturnReceiptOpen, invoiceQuery, refunds]);
+
+  const itemAvailableQtyFor = (inv: Sale, item: SaleItem) => {
+    const prevReturnsForSale = (refunds || []).filter(r => r.originalSaleId === inv.id);
+    const previouslyReturned = prevReturnsForSale.reduce((acc, r) => {
+      const matching = (r.items || []).find(it => it.productId === item.productId);
+      return acc + (matching ? matching.quantity : 0);
+    }, 0);
+    return Math.max(0, item.quantity - previouslyReturned);
   };
 
   // Search by text / barcode input
@@ -352,12 +492,13 @@ export const ReturnsView: React.FC = () => {
           <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white flex items-center gap-2">
             <RotateCcw className="w-6 h-6 text-rose-600" />
             <span>{t('returnsTitle')}</span>
-            <span className="text-xs bg-rose-500/10 text-rose-700 dark:text-rose-400 font-bold px-2.5 py-0.5 rounded-full border border-rose-500/20">
+            <span className="text-xs bg-rose-500/10 text-rose-700 dark:text-rose-400 font-bold px-2.5 py-0.5 rounded-full border border-rose-500/20 flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-rose-500" />
               ربط المرتجعات بالباركود
             </span>
           </h2>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            مسح باركود الفاتورة الأصلية، استرجاع تفاصيل البيع، واختيار العناصر المراد إرجاعها بدقة وسرعة
+            مسح باركود الفاتورة الأصلية، استرجاع تفاصيل البيع، واختيار العناصر المراد إرجاعها فقط لتسريع المرتجعات
           </p>
         </div>
 
@@ -370,6 +511,25 @@ export const ReturnsView: React.FC = () => {
           <span>مسح باركود الفاتورة بالكاميرا</span>
         </button>
       </div>
+
+      {/* Scanned Item Feedback Banner */}
+      {lastScannedItemBanner && (
+        <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 p-3 rounded-2xl flex items-center justify-between animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0" />
+            <div>
+              <span className="font-bold text-xs">تم رصد الصنف بالباركود وإضافته للمرتجع:</span>
+              <p className="text-xs font-black">{lastScannedItemBanner.name} (الكمية المحددة: {lastScannedItemBanner.qty})</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setLastScannedItemBanner(null)}
+            className="p-1 rounded-lg text-emerald-600 hover:bg-emerald-500/20"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Invoice Search & Scanner Input Card */}
       <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-3.5">
@@ -462,6 +622,20 @@ export const ReturnsView: React.FC = () => {
                   >
                     {copiedInvoice ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
+                  {/* Visual SVG Barcode */}
+                  <div
+                    className="hidden sm:inline-block bg-white px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs"
+                    dangerouslySetInnerHTML={{
+                      __html: generateBarcodeSvg(selectedInvoice.invoiceNumber, {
+                        width: 130,
+                        height: 24,
+                        fontSize: 8,
+                        showText: false,
+                        barColor: '#000000',
+                        bgColor: '#ffffff'
+                      })
+                    }}
+                  />
                 </div>
 
                 {/* Metadata Grid */}
@@ -542,16 +716,19 @@ export const ReturnsView: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleSelectAll}
-                  className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-all"
+                  className="px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 text-xs font-bold transition-all border border-amber-200 dark:border-amber-800/40 flex items-center gap-1"
+                  title="تحديد كامل كميات الفاتورة المتاحة للإرجاع"
                 >
-                  تحديد الكل
+                  <Check className="w-3.5 h-3.5" />
+                  <span>تحديد الكل (كامل الفاتورة)</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleDeselectAll}
                   className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold transition-all"
+                  title="إلغاء التحديد لاختيار أصناف معينة فقط"
                 >
-                  إلغاء التحديد
+                  إلغاء التحديد (لاختيار مفرد)
                 </button>
               </div>
             </div>

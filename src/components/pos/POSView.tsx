@@ -40,12 +40,14 @@ import {
   CheckCircle2,
   X,
   RotateCcw,
-  Folder
+  Folder,
+  Edit3
 } from 'lucide-react';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { CustomerQRScannerModal } from './CustomerQRScannerModal';
 import { PaymentModal } from './PaymentModal';
 import { KitchenTicketModal } from './KitchenTicketModal';
+import { QuickPriceEditModal } from './QuickPriceEditModal';
 import { RestaurantPOSHeader } from './RestaurantPOSHeader';
 import { WholesalePOSHeader } from './WholesalePOSHeader';
 import { RetailPOSHeader } from './RetailPOSHeader';
@@ -58,6 +60,8 @@ export const POSView: React.FC = () => {
     addToCart,
     updateCartItemQuantity,
     updateCartItemDiscount,
+    updateCartItemPrice,
+    updateProduct,
     removeFromCart,
     clearCart,
     selectedCustomer,
@@ -85,6 +89,8 @@ export const POSView: React.FC = () => {
     toggleCartItemTradeMode,
     processSale,
     notify,
+    sales,
+    navigateToReturnWithInvoice,
   } = useApp();
 
   const [selectedCategory, setSelectedCategory] = useState<string>('cat_all');
@@ -103,6 +109,65 @@ export const POSView: React.FC = () => {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   const [isKitchenTicketModalOpen, setIsKitchenTicketModalOpen] = useState(false);
+  const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
+  const [editingPriceTarget, setEditingPriceTarget] = useState<{
+    product: Product;
+    currentPrice: number;
+    isCartItem: boolean;
+    cartQuantity?: number;
+  } | null>(null);
+
+  const handleOpenProductPriceEdit = (product: Product) => {
+    setEditingPriceTarget({
+      product,
+      currentPrice: product.price,
+      isCartItem: false
+    });
+    setIsPriceModalOpen(true);
+  };
+
+  const handleOpenCartItemPriceEdit = (item: typeof cart[0]) => {
+    setEditingPriceTarget({
+      product: item.product,
+      currentPrice: item.unitPrice,
+      isCartItem: true,
+      cartQuantity: item.quantity
+    });
+    setIsPriceModalOpen(true);
+  };
+
+  const handleSavePriceEdit = (newPrice: number, alsoUpdateCatalog: boolean, alsoAddToCart?: boolean) => {
+    if (!editingPriceTarget) return;
+
+    const { product, isCartItem } = editingPriceTarget;
+
+    if (isCartItem) {
+      updateCartItemPrice(product.id, newPrice);
+      if (alsoUpdateCatalog) {
+        updateProduct(product.id, { price: newPrice });
+        notify('تم تحديث السعر', `تم تعديل سعر ${product.nameAr} في السلة والمخزون إلى ${formatCurrency(newPrice)}`, 'success');
+      } else {
+        notify('تم تعديل السعر في السلة', `سعر الصنف الجديد: ${formatCurrency(newPrice)}`, 'success');
+      }
+    } else {
+      if (alsoUpdateCatalog) {
+        updateProduct(product.id, { price: newPrice });
+        const inCart = cart.find(it => it.productId === product.id);
+        if (inCart) {
+          updateCartItemPrice(product.id, newPrice);
+        }
+        notify('تم تحديث سعر المنتج', `تم تعديل سعر ${product.nameAr} بالمخزون إلى ${formatCurrency(newPrice)}`, 'success');
+      }
+
+      if (alsoAddToCart) {
+        const updatedProduct = { ...product, price: newPrice };
+        addToCart(updatedProduct);
+        setTimeout(() => {
+          updateCartItemPrice(product.id, newPrice);
+        }, 50);
+      }
+    }
+  };
 
   // Interactive Cashier Change Calculator State
   const [posCashPaidInput, setPosCashPaidInput] = useState<string>('');
@@ -136,6 +201,35 @@ export const POSView: React.FC = () => {
         const candidate = (scanBuffer.trim() || searchQuery.trim());
         if (candidate.length >= 2) {
           const clean = candidate.toLowerCase();
+
+          // 1. Check if scanned barcode is an invoice barcode or QR payload
+          let targetInv = clean;
+          if (clean.startsWith('{') && clean.endsWith('}')) {
+            try {
+              const parsed = JSON.parse(candidate);
+              if (parsed.inv || parsed.invoiceNumber) {
+                targetInv = String(parsed.inv || parsed.invoiceNumber).toLowerCase();
+              }
+            } catch {}
+          }
+
+          const matchedSale = sales.find(s =>
+            s.invoiceNumber.toLowerCase() === targetInv ||
+            s.id.toLowerCase() === targetInv ||
+            s.invoiceNumber.toLowerCase() === clean
+          );
+
+          if (matchedSale) {
+            e.preventDefault();
+            soundEffects.playSuccess();
+            scanBuffer = '';
+            setSearchQuery('');
+            navigateToReturnWithInvoice(matchedSale);
+            notify('تم رصد باركود فاتورة!', `تم استرجاع الفاتورة #${matchedSale.invoiceNumber} لاختيار الأصناف المرتجعة`, 'success');
+            return;
+          }
+
+          // 2. Check product barcode / SKU
           const found = products.find(p =>
             p.barcode.toLowerCase() === clean ||
             p.sku.toLowerCase() === clean ||
@@ -221,6 +315,31 @@ export const POSView: React.FC = () => {
       e.preventDefault();
       const q = searchQuery.trim().toLowerCase();
       if (!q) return;
+
+      // 1. Check if user scanned or typed an invoice number
+      let targetInv = q;
+      if (q.startsWith('{') && q.endsWith('}')) {
+        try {
+          const parsed = JSON.parse(searchQuery.trim());
+          if (parsed.inv || parsed.invoiceNumber) {
+            targetInv = String(parsed.inv || parsed.invoiceNumber).toLowerCase();
+          }
+        } catch {}
+      }
+      const matchedSale = sales.find(s =>
+        s.invoiceNumber.toLowerCase() === targetInv ||
+        s.id.toLowerCase() === targetInv ||
+        s.invoiceNumber.toLowerCase() === q
+      );
+      if (matchedSale) {
+        soundEffects.playSuccess();
+        setSearchQuery('');
+        navigateToReturnWithInvoice(matchedSale);
+        notify('تم رصد باركود فاتورة!', `تم استرجاع الفاتورة #${matchedSale.invoiceNumber} لاختيار الأصناف المرتجعة`, 'success');
+        return;
+      }
+
+      // 2. Check exact product match
       const exactMatch = products.find(
         p =>
           p.barcode.toLowerCase() === q ||
@@ -500,6 +619,17 @@ export const POSView: React.FC = () => {
             </span>
           </button>
 
+          {/* Quick Invoice Return by Barcode Button */}
+          <button
+            id="btn-pos-invoice-return"
+            onClick={() => setActiveTab('returns')}
+            className="flex items-center justify-center gap-1.5 px-3 sm:px-3.5 min-h-[46px] bg-rose-50/80 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 text-xs font-bold rounded-2xl border border-rose-200 dark:border-rose-800/60 shadow-xs active:scale-95 transition-all shrink-0 cursor-pointer"
+            title="إرجاع بضاعة عبر مسح باركود الفاتورة الأصلية"
+          >
+            <RotateCcw className="w-4 h-4 text-rose-500" />
+            <span className="hidden xl:inline">إرجاع فاتورة</span>
+          </button>
+
           {/* Mobile Cart Toggle Button */}
           <button
             id="btn-mobile-cart-top"
@@ -667,10 +797,21 @@ export const POSView: React.FC = () => {
                     {/* Restaurant Card Bottom */}
                     <div className="mt-2.5 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between">
                       <div>
-                        <span className="text-xs sm:text-sm font-black text-emerald-600 dark:text-emerald-400 block font-mono">
-                          {formatCurrency(product.price)}
-                        </span>
-                        <span className="text-[9px] text-slate-400">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenProductPriceEdit(product);
+                          }}
+                          className="group/price inline-flex items-center gap-1 px-1.5 py-0.5 -ms-1.5 rounded-lg hover:bg-amber-50 dark:hover:bg-amber-950/40 border border-transparent hover:border-amber-300 dark:hover:border-amber-700 transition-all cursor-pointer text-start"
+                          title="انقر لتعديل سعر المنتج مباشرة"
+                        >
+                          <span className="text-xs sm:text-sm font-black text-emerald-600 dark:text-emerald-400 group-hover/price:text-amber-600 dark:group-hover/price:text-amber-400 block font-mono">
+                            {formatCurrency(product.price)}
+                          </span>
+                          <Edit3 className="w-3 h-3 text-slate-400 group-hover/price:text-amber-500 opacity-0 group-hover/price:opacity-100 transition-opacity shrink-0" />
+                        </button>
+                        <span className="text-[9px] text-slate-400 block">
                           {product.unit || 'وجبة / طلب'}
                         </span>
                       </div>
@@ -756,10 +897,21 @@ export const POSView: React.FC = () => {
 
                       {/* Wholesale Price Info (Col 2) */}
                       <div className="sm:col-span-2 text-start sm:text-center">
-                        <div className="flex sm:flex-col items-baseline sm:items-center justify-between sm:justify-center gap-1">
-                          <span className="text-xs sm:text-sm font-black text-amber-600 dark:text-amber-400 font-mono">
-                            {formatCurrency(wholesalePackPrice)}
-                          </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleOpenProductPriceEdit(product);
+                          }}
+                          className="group/price w-full flex sm:flex-col items-baseline sm:items-center justify-between sm:justify-center gap-1 p-1 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-950/40 border border-transparent hover:border-amber-300 dark:hover:border-amber-700 transition-all cursor-pointer"
+                          title="انقر لتعديل سعر المنتج مباشرة"
+                        >
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs sm:text-sm font-black text-amber-600 dark:text-amber-400 font-mono">
+                              {formatCurrency(wholesalePackPrice)}
+                            </span>
+                            <Edit3 className="w-3 h-3 text-slate-400 group-hover/price:text-amber-500 opacity-0 group-hover/price:opacity-100 transition-opacity shrink-0" />
+                          </div>
                           <span className="text-[10px] text-slate-400">
                             {formatCurrency(wholesalePrice)} / قطعة
                           </span>
@@ -768,7 +920,7 @@ export const POSView: React.FC = () => {
                               وفر {formatCurrency(packSaving)}
                             </span>
                           )}
-                        </div>
+                        </button>
                       </div>
 
                       {/* Quick Bulk Add Actions (Col 3) */}
@@ -882,9 +1034,20 @@ export const POSView: React.FC = () => {
 
                     {/* Price (Col 2) */}
                     <div className="sm:col-span-2 text-start sm:text-center">
-                      <span className="text-xs sm:text-sm font-black text-blue-600 dark:text-blue-400 font-mono">
-                        {formatCurrency(product.price)}
-                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenProductPriceEdit(product);
+                        }}
+                        className="group/price inline-flex items-center gap-1 px-2.5 py-1 rounded-xl hover:bg-amber-50 dark:hover:bg-amber-950/40 border border-transparent hover:border-amber-300 dark:hover:border-amber-700 transition-all cursor-pointer"
+                        title="انقر لتعديل سعر المنتج مباشرة"
+                      >
+                        <span className="text-xs sm:text-sm font-black text-blue-600 dark:text-blue-400 group-hover/price:text-amber-600 dark:group-hover/price:text-amber-400 font-mono">
+                          {formatCurrency(product.price)}
+                        </span>
+                        <Edit3 className="w-3 h-3 text-slate-400 group-hover/price:text-amber-500 opacity-0 group-hover/price:opacity-100 transition-opacity shrink-0" />
+                      </button>
                     </div>
 
                     {/* Add Button (Col 2) */}
@@ -1071,7 +1234,20 @@ export const POSView: React.FC = () => {
                       )}
                     </div>
                     <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">
-                      <span>{formatCurrency(item.unitPrice)}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenCartItemPriceEdit(item)}
+                        className="group/cprice inline-flex items-center gap-1 px-1.5 py-0.5 -ms-1 rounded-lg bg-amber-50/70 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 border border-amber-200/80 hover:border-amber-400 dark:border-amber-800/80 text-amber-900 dark:text-amber-200 transition-all cursor-pointer"
+                        title="انقر لتعديل سعر هذا الصنف في السلة مباشرة"
+                      >
+                        <span className="font-bold">{formatCurrency(item.unitPrice)}</span>
+                        <Edit3 className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                        {item.unitPrice !== item.product.price && (
+                          <span className="text-[9px] px-1 rounded bg-amber-500 text-slate-950 font-black">
+                            معدّل
+                          </span>
+                        )}
+                      </button>
                       {item.discount > 0 && (
                         <span className="text-[10px] text-emerald-600 font-bold">
                           (خصم {formatCurrency(item.discount)})
@@ -1367,6 +1543,17 @@ export const POSView: React.FC = () => {
               <ScanBarcode className="w-5 h-5 text-amber-500" />
             </button>
 
+            {/* Quick Invoice Return Shortcut on Mobile Dock */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('returns')}
+              className="w-11 h-11 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-300 flex items-center justify-center shrink-0 active:scale-90 transition-all shadow-xs cursor-pointer border border-rose-200/60 dark:border-rose-800/40"
+              title="إرجاع بضاعة بمسح الباركود"
+              aria-label="إرجاع بضاعة بمسح الباركود"
+            >
+              <RotateCcw className="w-5 h-5 text-rose-500" />
+            </button>
+
             {/* 2. Cart Summary Button */}
             <button
               type="button"
@@ -1449,6 +1636,19 @@ export const POSView: React.FC = () => {
           onClose={() => setIsKitchenTicketModalOpen(false)}
         />
       )}
+
+      <QuickPriceEditModal
+        isOpen={isPriceModalOpen}
+        onClose={() => {
+          setIsPriceModalOpen(false);
+          setEditingPriceTarget(null);
+        }}
+        product={editingPriceTarget?.product || null}
+        currentPrice={editingPriceTarget?.currentPrice || 0}
+        isCartItem={editingPriceTarget?.isCartItem}
+        cartQuantity={editingPriceTarget?.cartQuantity}
+        onSave={handleSavePriceEdit}
+      />
     </div>
   );
 };

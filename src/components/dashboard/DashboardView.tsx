@@ -15,7 +15,14 @@ import {
   Package,
   Layers,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  ShieldCheck,
+  Lock,
+  Eye,
+  EyeOff,
+  Crown,
+  KeyRound,
+  ArrowRight
 } from 'lucide-react';
 import {
   AreaChart,
@@ -32,6 +39,7 @@ import {
   Cell
 } from 'recharts';
 import { DailySalesSummaryWidget } from './DailySalesSummaryWidget';
+import { getRoleInfo, hasActionPermission } from '../../utils/permissions';
 
 export const DashboardView: React.FC = () => {
   const {
@@ -42,8 +50,16 @@ export const DashboardView: React.FC = () => {
     formatCurrency,
     t,
     language,
-    setActiveTab
+    setActiveTab,
+    currentUser,
+    setCurrentUser,
+    users = [],
+    setIsPinModalOpen
   } = useApp();
+
+  const roleInfo = getRoleInfo(currentUser.role);
+  const canViewNetProfit = hasActionPermission('view_net_profit', currentUser.role);
+  const canViewAiAdvisor = hasActionPermission('view_ai_advisor', currentUser.role);
 
   const safeSales = sales || [];
   const safeProducts = products || [];
@@ -114,6 +130,131 @@ export const DashboardView: React.FC = () => {
 
   return (
     <div className="flex-1 p-4 sm:p-6 overflow-y-auto space-y-6 bg-slate-50/50 dark:bg-slate-950">
+      {/* Role-Based Access Level & Permission Control Banner */}
+      <div className="p-4 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-slate-500 dark:text-slate-400 font-bold">
+                  مستوى وصول الموظف الحالي:
+                </span>
+                <span className={`text-xs font-black px-2.5 py-0.5 rounded-full border inline-flex items-center gap-1 ${roleInfo.badgeColor}`}>
+                  {roleInfo.badgeLabel}
+                </span>
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                  ({currentUser.name})
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                {roleInfo.descriptionAr}
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Role Simulation Switcher */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] font-bold text-slate-400 ms-1">
+              محاكاة وتبديل الصلاحية:
+            </span>
+            {users.map(u => {
+              const uMeta = getRoleInfo(u.role);
+              const isSelected = currentUser.id === u.id;
+              return (
+                <button
+                  key={u.id}
+                  onClick={() => setCurrentUser(u)}
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 ${
+                    isSelected
+                      ? 'bg-amber-500 text-slate-950 border-amber-500 font-black shadow-xs shadow-amber-500/20'
+                      : 'bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-amber-400'
+                  }`}
+                  title={`تبديل فوري لتجربة صلاحية (${uMeta.labelAr})`}
+                >
+                  <span>{u.name.split(' ')[0]}</span>
+                  <span className={`text-[9px] px-1 py-0.2 rounded ${isSelected ? 'bg-slate-950 text-amber-400' : uMeta.badgeColor}`}>
+                    {uMeta.badgeLabel}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Permissions Summary Badges */}
+        <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-slate-400 font-bold flex items-center gap-1">
+              <Eye className="w-3.5 h-3.5 text-emerald-500" />
+              الأدوات المتاحة لك:
+            </span>
+            <span className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-semibold px-2 py-0.5 rounded-md">
+              نقطة البيع POS
+            </span>
+            <span className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-semibold px-2 py-0.5 rounded-md">
+              أرشيف الفواتير
+            </span>
+            <span className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 font-semibold px-2 py-0.5 rounded-md">
+              المرتجعات والزبائن
+            </span>
+            {currentUser.role !== 'cashier' && (
+              <>
+                <span className="bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 font-semibold px-2 py-0.5 rounded-md">
+                  المخزون والمنتجات
+                </span>
+                <span className="bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 font-semibold px-2 py-0.5 rounded-md">
+                  الديون والمصاريف
+                </span>
+                <span className="bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 font-semibold px-2 py-0.5 rounded-md">
+                  تجارة الجملة
+                </span>
+              </>
+            )}
+            {canViewNetProfit && (
+              <span className="bg-purple-500/10 text-purple-700 dark:text-purple-300 font-semibold px-2 py-0.5 rounded-md">
+                صافي الأرباح والإعدادات
+              </span>
+            )}
+          </div>
+
+          {!canViewNetProfit && (
+            <div className="flex items-center gap-1.5 text-rose-500 dark:text-rose-400 font-bold">
+              <Lock className="w-3.5 h-3.5" />
+              <span>الأرباح الصافية وإدارة الموظفين والإعدادات محجوبة عن دورك</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Cashier Role Friendly Redirection Banner */}
+      {currentUser.role === 'cashier' && (
+        <div className="p-4 rounded-3xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500 text-slate-950 flex items-center justify-center font-bold shrink-0">
+              <ReceiptText className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-xs sm:text-sm font-black text-amber-900 dark:text-amber-200">
+                مرحباً بك كاشير {currentUser.name}!
+              </h4>
+              <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                شاشتك الرئيسية المعتمدة هي نقطة البيع (POS). الأدوات الإدارية مقيدة بحسب صلاحيتك.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveTab('pos')}
+            className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl shadow-xs shrink-0 flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+          >
+            <span>الانتقال لنقطة البيع (POS)</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Dashboard Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
@@ -132,7 +273,7 @@ export const DashboardView: React.FC = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => setActiveTab('pos')}
-            className="flex items-center gap-1.5 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-xl shadow-md shadow-amber-500/20 active:scale-95 transition-all"
+            className="flex items-center gap-1.5 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-black rounded-xl shadow-md shadow-amber-500/20 active:scale-95 transition-all cursor-pointer"
           >
             <PlusCircle className="w-4 h-4" />
             <span>{t('newSale')}</span>
@@ -140,38 +281,40 @@ export const DashboardView: React.FC = () => {
         </div>
       </div>
 
-      {/* AI Smart Executive Advisor Card */}
-      <div className="p-4 sm:p-5 bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-purple-500/10 border border-indigo-500/20 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs">
-        <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-indigo-600 text-white flex items-center justify-center font-bold shrink-0 shadow-md shadow-indigo-500/20">
-            <Sparkles className="w-6 h-6 animate-pulse" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
-                {language === 'ar' ? 'مستشار الذكاء الاصطناعي الفوري (Gemini AI Business Hub)' : 'Instant Gemini AI Business Intelligence'}
-              </h4>
-              <span className="text-[10px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold px-2 py-0.5 rounded-full border border-indigo-500/20">
-                مباشر
-              </span>
+      {/* AI Smart Executive Advisor Card (Supervisors and Managers Only) */}
+      {canViewAiAdvisor && (
+        <div className="p-4 sm:p-5 bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-purple-500/10 border border-indigo-500/20 rounded-3xl flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-indigo-600 text-white flex items-center justify-center font-bold shrink-0 shadow-md shadow-indigo-500/20">
+              <Sparkles className="w-6 h-6 animate-pulse" />
             </div>
-            <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-              {language === 'ar'
-                ? 'تحليل فوري للمبيعات، كشف النواقص، اقتراح تسعير الجملة والمفرق، وتوليد حملات تسويقية تلقائياً'
-                : 'Real-time sales auditing, stock deficiency forecast, wholesale pricing models & automated campaigns.'}
-            </p>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-sm sm:text-base font-black text-slate-900 dark:text-white">
+                  {language === 'ar' ? 'مستشار الذكاء الاصطناعي الفوري (Gemini AI Business Hub)' : 'Instant Gemini AI Business Intelligence'}
+                </h4>
+                <span className="text-[10px] bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold px-2 py-0.5 rounded-full border border-indigo-500/20">
+                  مباشر
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                {language === 'ar'
+                  ? 'تحليل فوري للمبيعات، كشف النواقص، اقتراح تسعير الجملة والمفرق، وتوليد حملات تسويقية تلقائياً'
+                  : 'Real-time sales auditing, stock deficiency forecast, wholesale pricing models & automated campaigns.'}
+              </p>
+            </div>
           </div>
-        </div>
 
-        <button
-          id="btn-dashboard-open-ai"
-          onClick={() => setActiveTab('ai')}
-          className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white text-xs font-black rounded-xl shadow-xs shrink-0 flex items-center gap-2 self-start md:self-auto hover:scale-105 active:scale-95 transition-all"
-        >
-          <Sparkles className="w-4 h-4" />
-          <span>{language === 'ar' ? 'فتح المستشار الذكي والتحليلات' : 'Open AI Advisor'}</span>
-        </button>
-      </div>
+          <button
+            id="btn-dashboard-open-ai"
+            onClick={() => setActiveTab('ai')}
+            className="px-4 py-2.5 bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white text-xs font-black rounded-xl shadow-xs shrink-0 flex items-center gap-2 self-start md:self-auto hover:scale-105 active:scale-95 transition-all cursor-pointer"
+          >
+            <Sparkles className="w-4 h-4" />
+            <span>{language === 'ar' ? 'فتح المستشار الذكي والتحليلات' : 'Open AI Advisor'}</span>
+          </button>
+        </div>
+      )}
 
       {/* Daily Sales Summary Widget with Total Revenue, Transaction Count, AOV & WhatsApp Auto-Dispatch */}
       <DailySalesSummaryWidget />
@@ -224,25 +367,47 @@ export const DashboardView: React.FC = () => {
           </div>
         </div>
 
-        {/* Net Profit */}
-        <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-              {t('netProfit')} (الربح الصافي)
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5" />
+        {/* Net Profit (Guarded for Manager / Owner Only) */}
+        {canViewNetProfit ? (
+          <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
+                {t('netProfit')} (الربح الصافي)
+              </span>
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
+                <TrendingUp className="w-5 h-5" />
+              </div>
+            </div>
+            <div>
+              <h3 className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                {formatCurrency(netProfit)}
+              </h3>
+              <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1 font-semibold">
+                <span>بعد خصم التكلفة والمصاريف التشغيلية</span>
+              </p>
             </div>
           </div>
-          <div>
-            <h3 className="text-xl sm:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
-              {formatCurrency(netProfit)}
-            </h3>
-            <p className="text-[11px] text-slate-400 mt-1 flex items-center gap-1 font-semibold">
-              <span>بعد خصم التكلفة والمصاريف التشغيلية</span>
-            </p>
+        ) : (
+          <div className="bg-slate-50 dark:bg-slate-900/40 p-4 sm:p-5 rounded-3xl border border-dashed border-slate-300 dark:border-slate-800 shadow-xs space-y-3 flex flex-col justify-between">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-400 dark:text-slate-500">
+                {t('netProfit')} (محجوب)
+              </span>
+              <div className="w-9 h-9 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-400 flex items-center justify-center">
+                <Lock className="w-4 h-4" />
+              </div>
+            </div>
+            <div>
+              <span className="text-xs font-bold px-2 py-1 rounded-lg bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-400 inline-flex items-center gap-1">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                مقتصر على صلاحية المدير
+              </span>
+              <p className="text-[11px] text-slate-400 mt-1.5 font-medium">
+                تم حجب تفاصيل الأرباح لحماية خصوصية الحسابات
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Total Invoices */}
         <div className="bg-white dark:bg-slate-900 p-4 sm:p-5 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-3">

@@ -1,6 +1,7 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { ActiveTab } from '../../types';
+import { canAccessTab, getRoleInfo } from '../../utils/permissions';
 import {
   LayoutDashboard,
   ReceiptText,
@@ -21,7 +22,9 @@ import {
   Cloud,
   Truck,
   Boxes,
-  Coins
+  Coins,
+  ShieldCheck,
+  KeyRound
 } from 'lucide-react';
 
 interface NavSection {
@@ -39,13 +42,14 @@ interface NavSection {
 }
 
 export const Sidebar: React.FC = () => {
-  const { activeTab, setActiveTab, t, products, cart, devices, deliveryVehicles, settings } = useApp();
+  const { activeTab, setActiveTab, t, products, cart, devices, deliveryVehicles, settings, currentUser, setIsPinModalOpen } = useApp();
 
   const lowStockCount = products.filter(p => p.stock <= p.minStock && p.status === 'active').length;
   const vehiclesOnRoute = deliveryVehicles.filter(v => v.status === 'on_route').length;
   const cartItemsCount = cart.reduce((acc, it) => acc + it.quantity, 0);
   const onlineDevicesCount = devices.filter(d => d.isOnline).length;
   const isGoogleDriveConnected = Boolean(settings.googleDriveConnected);
+  const roleInfo = getRoleInfo(currentUser.role);
 
   const navSections: NavSection[] = [
     {
@@ -80,6 +84,12 @@ export const Sidebar: React.FC = () => {
           id: 'invoices',
           labelKey: 'navInvoices',
           icon: FileSpreadsheet
+        },
+        {
+          id: 'returns',
+          labelKey: 'navReturns',
+          icon: RotateCcw,
+          tag: 'مسح باركود'
         }
       ]
     },
@@ -116,11 +126,6 @@ export const Sidebar: React.FC = () => {
           labelKey: 'navAI',
           icon: Sparkles,
           badgeColor: 'bg-gradient-to-r from-amber-500 to-indigo-600 text-white'
-        },
-        {
-          id: 'returns',
-          labelKey: 'navReturns',
-          icon: RotateCcw
         },
         {
           id: 'expenses',
@@ -185,7 +190,13 @@ export const Sidebar: React.FC = () => {
 
       {/* Navigation Sections */}
       <div className="flex-1 py-3 px-3 space-y-4 overflow-y-auto">
-        {navSections.map((section, sIdx) => (
+        {navSections
+          .map(sec => ({
+            ...sec,
+            items: sec.items.filter(item => canAccessTab(item.id, currentUser.role))
+          }))
+          .filter(sec => sec.items.length > 0)
+          .map((section, sIdx) => (
           <div key={sIdx} className="space-y-1">
             <div className="flex items-center justify-between px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
               <span>{section.title}</span>
@@ -237,9 +248,48 @@ export const Sidebar: React.FC = () => {
         ))}
       </div>
 
-      {/* Footer Branding & Google Cloud Sync Status */}
-      <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 space-y-2">
-        <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400">
+      {/* Role & Staff Access Level Badge & Switcher */}
+      <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/80 space-y-2">
+        <div className="p-2.5 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
+          <div className="flex items-center justify-between gap-2 mb-1.5">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-lg overflow-hidden bg-amber-500 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                {currentUser.avatar ? (
+                  <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  currentUser.name.charAt(0)
+                )}
+              </div>
+              <div className="min-w-0">
+                <span className="text-xs font-black text-slate-900 dark:text-white truncate block">
+                  {currentUser.name}
+                </span>
+                <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-md border inline-flex items-center gap-1 ${roleInfo.badgeColor}`}>
+                  <ShieldCheck className="w-2.5 h-2.5" />
+                  {roleInfo.badgeLabel}
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setIsPinModalOpen(true)}
+              className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-amber-600 transition-colors cursor-pointer"
+              title="تبديل المستخدم أو الصلاحية (PIN)"
+            >
+              <KeyRound className="w-4 h-4" />
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between text-[10px] text-slate-400 pt-1.5 border-t border-slate-100 dark:border-slate-700/50">
+            <span>مستوى الوصول:</span>
+            <span className="font-bold text-slate-600 dark:text-slate-300">
+              {roleInfo.level === 3 ? 'كامل (مدير 3)' : roleInfo.level === 2 ? 'متوسط (مشرف 2)' : 'محدود (كاشير 1)'}
+            </span>
+          </div>
+        </div>
+
+        {/* Footer Branding & Google Cloud Sync Status */}
+        <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 px-1">
           <div className="flex items-center gap-1.5">
             <Cloud className="w-3.5 h-3.5 text-amber-500" />
             <span className="font-bold text-[10px]">

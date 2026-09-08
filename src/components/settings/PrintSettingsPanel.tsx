@@ -122,6 +122,15 @@ export const PrintSettingsPanel: React.FC = () => {
     enableAutoCutter: settings.enableAutoCutter ?? true,
     enableCashDrawerKick: settings.enableCashDrawerKick ?? false,
     soundOnPrint: settings.soundOnPrint ?? true,
+    // Custom Receipt Thermal Margins & Preview Controls
+    previewReceiptBeforePrint: settings.previewReceiptBeforePrint ?? true,
+    receiptTopMarginMm: settings.receiptTopMarginMm ?? 3,
+    receiptBottomMarginMm: settings.receiptBottomMarginMm ?? 4,
+    receiptLeftMarginMm: settings.receiptLeftMarginMm ?? 3,
+    receiptRightMarginMm: settings.receiptRightMarginMm ?? 3,
+    receiptBottomCutFeedMm: settings.receiptBottomCutFeedMm ?? 18,
+    receiptFontScale: settings.receiptFontScale || 'normal',
+    receiptCustomWidthMm: settings.receiptCustomWidthMm || 80,
     labelAlignment: {
       topMarginMm: settings.labelAlignment?.topMarginMm ?? 2,
       bottomMarginMm: settings.labelAlignment?.bottomMarginMm ?? 2,
@@ -143,6 +152,8 @@ export const PrintSettingsPanel: React.FC = () => {
 
   // Preview & Sandbox State
   const [previewZoom, setPreviewZoom] = useState<number>(1.25);
+  const [receiptZoom, setReceiptZoom] = useState<number>(1.0);
+  const [showReceiptRulers, setShowReceiptRulers] = useState<boolean>(true);
   const [showRulerGuides, setShowRulerGuides] = useState<boolean>(true);
   const [showCrosshairs, setShowCrosshairs] = useState<boolean>(true);
   const [sampleProductId, setSampleProductId] = useState<string>(products[0]?.id || '');
@@ -161,7 +172,7 @@ export const PrintSettingsPanel: React.FC = () => {
 
   const handleSave = () => {
     updateSettings(formData);
-    notify('تم الحفظ بنجاح', 'تم تحديث إعدادات الطباعة، مقاسات الرول، ومعايرة المحاذاة', 'success');
+    notify('تم الحفظ بنجاح', 'تم تحديث إعدادات الطباعة، مقاسات الرول، هوامش الفاتورة ومعايرة المحاذاة', 'success');
   };
 
   const handleResetAlignmentDefaults = () => {
@@ -200,6 +211,72 @@ export const PrintSettingsPanel: React.FC = () => {
         }
       };
     });
+  };
+
+  // Receipt Margin & Cut Clearance Handlers
+  const handleAdjustReceiptMargin = (
+    key: 'receiptTopMarginMm' | 'receiptBottomMarginMm' | 'receiptLeftMarginMm' | 'receiptRightMarginMm' | 'receiptBottomCutFeedMm',
+    delta: number
+  ) => {
+    setFormData(prev => {
+      const current = prev[key] ?? (key === 'receiptBottomCutFeedMm' ? 18 : 3);
+      const maxLimit = key === 'receiptBottomCutFeedMm' ? 50 : 25;
+      const nextVal = Math.max(0, Math.min(maxLimit, current + delta));
+      return {
+        ...prev,
+        [key]: nextVal
+      };
+    });
+  };
+
+  const handleResetReceiptMargins = () => {
+    setFormData(prev => ({
+      ...prev,
+      receiptTopMarginMm: 3,
+      receiptBottomMarginMm: 4,
+      receiptLeftMarginMm: 3,
+      receiptRightMarginMm: 3,
+      receiptBottomCutFeedMm: 18,
+      receiptFontScale: 'normal'
+    }));
+    notify('تمت استعادة هوامش الفاتورة القياسية', 'علوي 3mm، سفلي 4mm، جانبي 3mm، ومسافة قص 18mm', 'info');
+  };
+
+  const handleApplyReceiptPreset = (preset: 'standard' | 'compact' | 'comfort') => {
+    if (preset === 'standard') {
+      setFormData(prev => ({
+        ...prev,
+        receiptTopMarginMm: 3,
+        receiptBottomMarginMm: 4,
+        receiptLeftMarginMm: 3,
+        receiptRightMarginMm: 3,
+        receiptBottomCutFeedMm: 18,
+        receiptFontScale: 'normal'
+      }));
+      notify('تم تطبيق الهوامش القياسية', 'تنسيق متوازن لطابعات 80mm و 58mm', 'info');
+    } else if (preset === 'compact') {
+      setFormData(prev => ({
+        ...prev,
+        receiptTopMarginMm: 1,
+        receiptBottomMarginMm: 2,
+        receiptLeftMarginMm: 1,
+        receiptRightMarginMm: 1,
+        receiptBottomCutFeedMm: 12,
+        receiptFontScale: 'compact'
+      }));
+      notify('تم تطبيق الهوامش الموفرة للورق', 'هوامش 1mm ضيقة مع خط مدمج لتقليل طول الورق', 'info');
+    } else if (preset === 'comfort') {
+      setFormData(prev => ({
+        ...prev,
+        receiptTopMarginMm: 5,
+        receiptBottomMarginMm: 6,
+        receiptLeftMarginMm: 5,
+        receiptRightMarginMm: 5,
+        receiptBottomCutFeedMm: 22,
+        receiptFontScale: 'large'
+      }));
+      notify('تم تطبيق الهوامش المريحة الواسعة', 'هوامش 5mm مريحة ومسافة قص 22mm وخط واضح وكبير', 'info');
+    }
   };
 
   // Printing Handlers
@@ -647,7 +724,576 @@ export const PrintSettingsPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* SECTION 3: Label Alignment & Calibration Studio (Interactive Visual Sandbox) */}
+      {/* SECTION 3: Thermal Receipt Margins & Pre-Print Preview (ضبط هوامش الفاتورة ومعاينة ما قبل الطباعة) */}
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-6">
+        {/* Section Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="p-1.5 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                <Receipt className="w-4 h-4" />
+              </span>
+              <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                هوامش الفاتورة الحرارية ومعاينة ما قبل الطباعة (Thermal Margins & Cut Safety)
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+              معايرة دقيقة لهوامش الفاتورة بالمليمتر ومسافة تلقيم الورق قبل شفرة القص التلقائي لتفادي قص الباركود أو الإجمالي على الطابعات الحرارية المختلفة.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleResetReceiptMargins}
+              className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>استعادة هوامش الفاتورة القياسية</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 1. Toggle: Preview Receipt Before Printing */}
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/25 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <span className="p-2.5 rounded-2xl bg-amber-500 text-slate-950 shadow-sm shrink-0">
+              <Eye className="w-5 h-5" />
+            </span>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <h4 className="text-xs font-black text-slate-900 dark:text-white">
+                  معاينة الفاتورة قبل الطباعة (Preview Receipt Before Print)
+                </h4>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                  موصى به لتفادي أخطاء الورق
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed max-w-2xl">
+                عند التفعيل، تظهر نافذة تفاعلية لمعاينة الفاتورة ببنودها، الإجماليات، والباركود مع خط توجيه القص قبل إرسال أمر الطباعة المادي للطابعة الحرارية، مما يمنح الكاشير فرصة التحقق وتجنب هدر الورق.
+              </p>
+            </div>
+          </div>
+
+          <label className="relative inline-flex items-center cursor-pointer shrink-0">
+            <input
+              type="checkbox"
+              checked={formData.previewReceiptBeforePrint}
+              onChange={e => setFormData({ ...formData, previewReceiptBeforePrint: e.target.checked })}
+              className="sr-only peer"
+            />
+            <div className="w-12 h-6.5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[3px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5.5 after:w-5.5 after:transition-all peer-checked:bg-amber-500"></div>
+          </label>
+        </div>
+
+        {/* 2. Quick Presets Bar */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              أنماط وهوامش سريعة جاهزة:
+            </span>
+            <span className="text-[10px] text-slate-400">انقر لتطبيق الإعدادات الموصى بها فوراً</span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <button
+              type="button"
+              onClick={() => handleApplyReceiptPreset('standard')}
+              className={`p-3 rounded-2xl border text-start transition-all cursor-pointer ${
+                formData.receiptTopMarginMm === 3 && formData.receiptBottomMarginMm === 4 && formData.receiptLeftMarginMm === 3 && formData.receiptRightMarginMm === 3 && formData.receiptBottomCutFeedMm === 18 && formData.receiptFontScale === 'normal'
+                  ? 'border-amber-500 bg-amber-50/60 dark:bg-amber-950/20 ring-1 ring-amber-500'
+                  : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 bg-slate-50/50 dark:bg-slate-800/40'
+              }`}
+            >
+              <div className="font-bold text-xs text-slate-900 dark:text-white flex items-center justify-between">
+                <span>قياسي متوازن (Standard)</span>
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-mono">3mm / 4mm</span>
+              </div>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                تنسيق متوازن لمعظم طابعات 80mm و 58mm مع مسافة قص أمان 18mm وخط قياسي 11.5px.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleApplyReceiptPreset('compact')}
+              className={`p-3 rounded-2xl border text-start transition-all cursor-pointer ${
+                formData.receiptTopMarginMm === 1 && formData.receiptBottomMarginMm === 2 && formData.receiptLeftMarginMm === 1 && formData.receiptRightMarginMm === 1 && formData.receiptBottomCutFeedMm === 12 && formData.receiptFontScale === 'compact'
+                  ? 'border-amber-500 bg-amber-50/60 dark:bg-amber-950/20 ring-1 ring-amber-500'
+                  : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 bg-slate-50/50 dark:bg-slate-800/40'
+              }`}
+            >
+              <div className="font-bold text-xs text-slate-900 dark:text-white flex items-center justify-between">
+                <span>مضغوط موفر للورق (Paper Saver)</span>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">1mm / 2mm</span>
+              </div>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                هوامش ضيقة 1mm ومسافة قص 12mm مع خط 10px لتقليل استهلاك رول الورق الحراري.
+              </p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => handleApplyReceiptPreset('comfort')}
+              className={`p-3 rounded-2xl border text-start transition-all cursor-pointer ${
+                formData.receiptTopMarginMm === 5 && formData.receiptBottomMarginMm === 6 && formData.receiptLeftMarginMm === 5 && formData.receiptRightMarginMm === 5 && formData.receiptBottomCutFeedMm === 22 && formData.receiptFontScale === 'large'
+                  ? 'border-amber-500 bg-amber-50/60 dark:bg-amber-950/20 ring-1 ring-amber-500'
+                  : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 bg-slate-50/50 dark:bg-slate-800/40'
+              }`}
+            >
+              <div className="font-bold text-xs text-slate-900 dark:text-white flex items-center justify-between">
+                <span>واسع وبارز (Comfort / Large)</span>
+                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-mono">5mm / 6mm</span>
+              </div>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                هوامش واسعة 5mm ومسافة قص 22mm مع خط بارز 13px لسهولة القراءة في المطاعم.
+              </p>
+            </button>
+          </div>
+        </div>
+
+        {/* 3. Detailed Margins & Cut Clearance Calibration Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          {/* Margins Controls Column */}
+          <div className="lg:col-span-7 space-y-4">
+            <h4 className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+              <Sliders className="w-3.5 h-3.5 text-amber-500" />
+              <span>هوامش الفاتورة الأربعة بالمليمتر (Millimeter Margins)</span>
+            </h4>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Top Margin */}
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200">الهامش العلوي (Top)</span>
+                  <span className="text-xs font-mono font-black text-amber-600 dark:text-amber-400 bg-white dark:bg-slate-700 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-600">
+                    {formData.receiptTopMarginMm} mm
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustReceiptMargin('receiptTopMarginMm', -1)}
+                    className="w-8 h-8 flex items-center justify-center rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 font-bold text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600"
+                  >
+                    -
+                  </button>
+                  <input
+                    type="range"
+                    min={0}
+                    max={25}
+                    value={formData.receiptTopMarginMm}
+                    onChange={e => setFormData({ ...formData, receiptTopMarginMm: Number(e.target.value) })}
+                    className="flex-1 accent-amber-500 cursor-pointer"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustReceiptMargin('receiptTopMarginMm', 1)}
+                    className="w-8 h-8 flex items-center justify-center rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 font-bold text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Bottom Margin */}
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200">الهامش السفلي (Bottom)</span>
+                  <span className="text-xs font-mono font-black text-amber-600 dark:text-amber-400 bg-white dark:bg-slate-700 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-600">
+                    {formData.receiptBottomMarginMm} mm
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustReceiptMargin('receiptBottomMarginMm', -1)}
+                    className="w-8 h-8 flex items-center justify-center rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 font-bold text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600"
+                  >
+                    -
+                  </button>
+                  <input
+                    type="range"
+                    min={0}
+                    max={25}
+                    value={formData.receiptBottomMarginMm}
+                    onChange={e => setFormData({ ...formData, receiptBottomMarginMm: Number(e.target.value) })}
+                    className="flex-1 accent-amber-500 cursor-pointer"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustReceiptMargin('receiptBottomMarginMm', 1)}
+                    className="w-8 h-8 flex items-center justify-center rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 font-bold text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Right Margin */}
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200">الهامش الأيمن (Right)</span>
+                  <span className="text-xs font-mono font-black text-amber-600 dark:text-amber-400 bg-white dark:bg-slate-700 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-600">
+                    {formData.receiptRightMarginMm} mm
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustReceiptMargin('receiptRightMarginMm', -1)}
+                    className="w-8 h-8 flex items-center justify-center rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 font-bold text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600"
+                  >
+                    -
+                  </button>
+                  <input
+                    type="range"
+                    min={0}
+                    max={20}
+                    value={formData.receiptRightMarginMm}
+                    onChange={e => setFormData({ ...formData, receiptRightMarginMm: Number(e.target.value) })}
+                    className="flex-1 accent-amber-500 cursor-pointer"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustReceiptMargin('receiptRightMarginMm', 1)}
+                    className="w-8 h-8 flex items-center justify-center rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 font-bold text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Left Margin */}
+              <div className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-700 dark:text-slate-200">الهامش الأيسر (Left)</span>
+                  <span className="text-xs font-mono font-black text-amber-600 dark:text-amber-400 bg-white dark:bg-slate-700 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-600">
+                    {formData.receiptLeftMarginMm} mm
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustReceiptMargin('receiptLeftMarginMm', -1)}
+                    className="w-8 h-8 flex items-center justify-center rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 font-bold text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600"
+                  >
+                    -
+                  </button>
+                  <input
+                    type="range"
+                    min={0}
+                    max={20}
+                    value={formData.receiptLeftMarginMm}
+                    onChange={e => setFormData({ ...formData, receiptLeftMarginMm: Number(e.target.value) })}
+                    className="flex-1 accent-amber-500 cursor-pointer"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => handleAdjustReceiptMargin('receiptLeftMarginMm', 1)}
+                    className="w-8 h-8 flex items-center justify-center rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 font-bold text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-600"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Cut Feed Clearance Spacer */}
+            <div className="p-4 rounded-2xl bg-rose-50/60 dark:bg-rose-950/20 border border-rose-200/80 dark:border-rose-900/40 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="p-1.5 rounded-xl bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                    <Scissors className="w-4 h-4" />
+                  </span>
+                  <div>
+                    <h5 className="text-xs font-black text-slate-900 dark:text-white">
+                      مسافة تلقيم الورق قبل شفرة القص التلقائي (Cut Clearance Feed)
+                    </h5>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      المسافة الإضافية الفارغة أسفل الفاتورة لضمان خروج الورق بعد رأس الطباعة وقبل موضع السكين
+                    </p>
+                  </div>
+                </div>
+                <span className="text-xs font-mono font-black text-rose-700 dark:text-rose-300 bg-white dark:bg-slate-800 px-2.5 py-1 rounded-xl border border-rose-200 dark:border-rose-800 shadow-xs">
+                  {formData.receiptBottomCutFeedMm} mm
+                </span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleAdjustReceiptMargin('receiptBottomCutFeedMm', -2)}
+                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-rose-200 dark:border-rose-800 font-bold text-xs text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/40"
+                >
+                  -2 mm
+                </button>
+                <input
+                  type="range"
+                  min={5}
+                  max={45}
+                  step={1}
+                  value={formData.receiptBottomCutFeedMm}
+                  onChange={e => setFormData({ ...formData, receiptBottomCutFeedMm: Number(e.target.value) })}
+                  className="flex-1 accent-rose-500 cursor-pointer"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleAdjustReceiptMargin('receiptBottomCutFeedMm', 2)}
+                  className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-rose-200 dark:border-rose-800 font-bold text-xs text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/40"
+                >
+                  +2 mm
+                </button>
+              </div>
+
+              <div className="text-[10px] text-rose-900/80 dark:text-rose-200/80 leading-relaxed bg-white/70 dark:bg-slate-800/70 p-2.5 rounded-xl border border-rose-200/60 dark:border-rose-800/40 flex items-start gap-2">
+                <Info className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+                <span>
+                  <strong>تنبيه فني مهم:</strong> الطابعات الحرارية المزودة بقاطع آلي (مثل Xprinter و Epson و Bixolon) تقع شفرة القص فيها على مسافة 12mm إلى 20mm بعد رأس الطباعة الحراري. إذا كانت مسافة التلقيم صغيرة جداً، ستقوم الشفرة بقص باركود الاسترجاع أو رسالة التذييل! القيمة الموصى بها هي <strong>18mm</strong>.
+                </span>
+              </div>
+            </div>
+
+            {/* Receipt Font Scaling Selector */}
+            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-200">
+                  مقياس حجم خط الفاتورة (Receipt Font Scale):
+                </label>
+                <span className="text-[10px] font-mono text-slate-400">
+                  {formData.receiptFontScale === 'compact' ? '10px مدمج' : formData.receiptFontScale === 'large' ? '13px بارز' : '11.5px قياسي'}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'compact', label: 'مضغوط (10px)', desc: 'موفر للورق وكثيف' },
+                  { id: 'normal', label: 'قياسي (11.5px)', desc: 'المتوازن الموصى به' },
+                  { id: 'large', label: 'كبير وواضح (13px)', desc: 'بارز للمطاعم والمسنين' }
+                ].map(item => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, receiptFontScale: item.id as any })}
+                    className={`p-2.5 rounded-xl border text-center transition-all cursor-pointer ${
+                      formData.receiptFontScale === item.id
+                        ? 'bg-amber-500 text-slate-950 border-amber-500 font-bold shadow-xs'
+                        : 'bg-white dark:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="text-xs font-bold">{item.label}</div>
+                    <div className={`text-[9px] mt-0.5 ${formData.receiptFontScale === item.id ? 'text-slate-900/80' : 'text-slate-400'}`}>
+                      {item.desc}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Live Receipt Interactive Sandbox Column */}
+          <div className="lg:col-span-5 bg-slate-100/90 dark:bg-slate-950/70 p-4 rounded-3xl border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-start space-y-3">
+            {/* Sandbox Controls Bar */}
+            <div className="w-full flex items-center justify-between text-xs pb-2 border-b border-slate-200 dark:border-slate-800">
+              <span className="font-extrabold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                <Eye className="w-3.5 h-3.5 text-amber-500" />
+                معاينة مباشرة لشريط الرول ({formData.printPaperSize === '58mm' ? '58mm' : '80mm'})
+              </span>
+
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setShowReceiptRulers(!showReceiptRulers)}
+                  className={`px-2 py-1 rounded-lg text-[10px] font-bold border transition-colors ${
+                    showReceiptRulers
+                      ? 'bg-amber-500/20 text-amber-600 border-amber-500/40'
+                      : 'bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700'
+                  }`}
+                  title="إظهار / إخفاء مسطرة المليمتر"
+                >
+                  مسطرة mm
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReceiptZoom(z => Math.max(0.7, Number((z - 0.1).toFixed(1))))}
+                  className="p-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
+                  title="تصغير"
+                >
+                  <ZoomOut className="w-3 h-3" />
+                </button>
+                <span className="text-[10px] font-mono font-bold px-1 text-slate-600 dark:text-slate-300">
+                  {Math.round(receiptZoom * 100)}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setReceiptZoom(z => Math.min(1.3, Number((z + 0.1).toFixed(1))))}
+                  className="p-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
+                  title="تكبير"
+                >
+                  <ZoomIn className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+
+            {/* Virtual Thermal Receipt Simulation Roll */}
+            <div className="w-full flex justify-center overflow-x-auto py-2">
+              <div
+                className="bg-white text-black shadow-lg rounded-sm relative transition-all border border-slate-300 select-none"
+                style={{
+                  width: `${formData.printPaperSize === '58mm' ? 52 : 76}mm`,
+                  maxWidth: '100%',
+                  paddingTop: `${formData.receiptTopMarginMm}mm`,
+                  paddingBottom: `${formData.receiptBottomMarginMm}mm`,
+                  paddingRight: `${formData.receiptRightMarginMm}mm`,
+                  paddingLeft: `${formData.receiptLeftMarginMm}mm`,
+                  transform: `scale(${receiptZoom})`,
+                  transformOrigin: 'top center',
+                  fontSize: formData.receiptFontScale === 'compact' ? '10px' : formData.receiptFontScale === 'large' ? '13px' : '11.5px',
+                  boxSizing: 'border-box'
+                }}
+              >
+                {/* Rulers Overlay Guide */}
+                {showReceiptRulers && (
+                  <div className="absolute inset-0 pointer-events-none border border-dashed border-amber-400/40">
+                    <span className="absolute top-0.5 right-1 text-[8px] font-mono text-amber-600">
+                      ع:{formData.receiptTopMarginMm}mm
+                    </span>
+                    <span className="absolute bottom-1 right-1 text-[8px] font-mono text-amber-600">
+                      س:{formData.receiptBottomMarginMm}mm
+                    </span>
+                  </div>
+                )}
+
+                {/* Header */}
+                <div className="border-b border-dashed border-slate-400 pb-2 mb-2 text-center">
+                  {formData.printStoreLogo && (
+                    <div className="font-black text-sm">{settings.storeNameAr}</div>
+                  )}
+                  <div className="text-[9px] text-slate-600">{settings.storeNameEn}</div>
+                  <div className="text-[10px] text-slate-700">{settings.address}</div>
+                  <div className="text-[9.5px] text-slate-600 font-mono">هاتف: {settings.phone}</div>
+                </div>
+
+                {formData.receiptHeader && (
+                  <div className="text-[9.5px] italic text-slate-600 text-center mb-2 border-b border-dashed border-slate-200 pb-1">
+                    {formData.receiptHeader}
+                  </div>
+                )}
+
+                {/* Meta */}
+                <div className="text-[10px] space-y-0.5 border-b border-dashed border-slate-400 pb-1.5 mb-1.5 text-start font-mono">
+                  <div className="flex justify-between">
+                    <span>رقم الفاتورة:</span>
+                    <span className="font-bold">INV-2026-TEST</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>التاريخ:</span>
+                    <span>{new Date().toLocaleDateString('ar-SY')}</span>
+                  </div>
+                  {formData.printCashierDetails && (
+                    <div className="flex justify-between">
+                      <span>الكاشير:</span>
+                      <span>كاشير تجريبي</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Items */}
+                <table className="w-full text-[10px] mb-2 text-start">
+                  <thead>
+                    <tr className="border-b border-black text-black">
+                      <th className="text-start py-0.5">الصنف</th>
+                      <th className="text-center py-0.5">الكمية</th>
+                      <th className="text-end py-0.5">المجموع</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-dashed divide-slate-200 font-mono">
+                    <tr>
+                      <td className="py-0.5 font-sans font-medium">{sampleProduct.nameAr}</td>
+                      <td className="text-center py-0.5">2</td>
+                      <td className="text-end py-0.5 font-bold">{(sampleProduct.price * 2).toLocaleString()}</td>
+                    </tr>
+                    <tr>
+                      <td className="py-0.5 font-sans font-medium">مياه معدنية 500 مل</td>
+                      <td className="text-center py-0.5">1</td>
+                      <td className="text-end py-0.5 font-bold">3,000</td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                {/* Totals */}
+                <div className="border-t border-dashed border-black pt-1.5 mb-2 font-mono text-[10px]">
+                  <div className="flex justify-between font-bold text-xs border-y border-black py-1 my-1">
+                    <span className="font-sans">الإجمالي النهائي:</span>
+                    <span>{(sampleProduct.price * 2 + 3000).toLocaleString()} {settings.currency.symbol}</span>
+                  </div>
+                </div>
+
+                {/* Barcode */}
+                {formData.printBarcodeOnReceipt && (
+                  <div className="my-2 flex flex-col items-center justify-center">
+                    <div
+                      className="max-w-full overflow-hidden flex justify-center"
+                      dangerouslySetInnerHTML={{
+                        __html: generateBarcodeSvg('INV-2026-TEST', {
+                          width: Math.min(220, (formData.printPaperSize === '58mm' ? 52 : 76) * 3.2),
+                          height: 42,
+                          fontSize: 8.5,
+                          showText: true,
+                          barColor: '#000000',
+                          bgColor: '#ffffff'
+                        })
+                      }}
+                    />
+                    <span className="text-[8px] text-slate-400 font-mono mt-0.5">باركود استرجاع الفاتورة</span>
+                  </div>
+                )}
+
+                {/* Footer */}
+                {formData.receiptFooter && (
+                  <div className="border-t border-dashed border-slate-300 pt-1.5 text-[9px] text-slate-500 text-center">
+                    {formData.receiptFooter}
+                  </div>
+                )}
+
+                {/* Visual Scissors Cut Line & Clearance Feed */}
+                <div
+                  style={{
+                    height: `${formData.receiptBottomCutFeedMm}mm`,
+                    width: '100%',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  className="relative my-1"
+                >
+                  <div className="w-full border-b-2 border-dashed border-rose-400 my-auto relative">
+                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full text-[8px] font-black flex items-center gap-1 border border-rose-300 shadow-xs whitespace-nowrap">
+                      <Scissors className="w-2.5 h-2.5" />
+                      <span>خط سكين القاطع ({formData.receiptBottomCutFeedMm}mm مسافة أمان)</span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Live Print Test Button */}
+            <div className="w-full pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handlePrintTestReceipt}
+                className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 dark:bg-slate-800 dark:hover:bg-slate-700 text-white font-bold text-xs rounded-xl shadow-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <Printer className="w-4 h-4 text-amber-400" />
+                <span>طباعة إيصال تجريبي على الطابعة الحرارية</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* SECTION 4: Label Alignment & Calibration Studio (Interactive Visual Sandbox) */}
       <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-5">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-3">
           <div>
@@ -1263,7 +1909,19 @@ export const PrintSettingsPanel: React.FC = () => {
       {/* 2. Printable Sample Receipt */}
       {activePrintMode === 'receipt' && (
         <div id="printable-receipt" className="hidden font-sans text-black">
-          <div style={{ width: `${selectedPreset.widthMm || 80}mm`, margin: '0 auto', textAlign: 'center', fontSize: '11px' }}>
+          <div
+            style={{
+              width: `${formData.printPaperSize === '58mm' ? 52 : 76}mm`,
+              margin: '0 auto',
+              textAlign: 'center',
+              fontSize: formData.receiptFontScale === 'compact' ? '10px' : formData.receiptFontScale === 'large' ? '13px' : '11.5px',
+              paddingTop: `${formData.receiptTopMarginMm}mm`,
+              paddingBottom: `${formData.receiptBottomMarginMm}mm`,
+              paddingRight: `${formData.receiptRightMarginMm}mm`,
+              paddingLeft: `${formData.receiptLeftMarginMm}mm`,
+              boxSizing: 'border-box'
+            }}
+          >
             <div style={{ borderBottom: '1px dashed #000', paddingBottom: '6px', marginBottom: '6px' }}>
               {formData.printStoreLogo && (
                 <div style={{ fontSize: '16px', fontWeight: '900', marginBottom: '2px' }}>{settings.storeNameAr}</div>
@@ -1350,6 +2008,9 @@ export const PrintSettingsPanel: React.FC = () => {
                 {formData.receiptFooter}
               </div>
             )}
+
+            {/* Thermal Cutter Clearance Spacer */}
+            <div style={{ height: `${formData.receiptBottomCutFeedMm}mm` }} />
           </div>
         </div>
       )}

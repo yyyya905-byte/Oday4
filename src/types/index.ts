@@ -1,7 +1,7 @@
 export type BusinessMode = 'restaurant' | 'wholesale' | 'retail';
 export type DiningType = 'dine_in' | 'takeaway' | 'delivery';
 
-export type UserRole = 'owner' | 'admin' | 'manager' | 'cashier' | 'inventory' | 'accountant';
+export type UserRole = 'owner' | 'admin' | 'manager' | 'supervisor' | 'cashier' | 'inventory' | 'accountant';
 
 export interface User {
   id: string;
@@ -372,6 +372,14 @@ export interface GoogleDriveBackupFile {
 
 export type ThemeMode = 'light' | 'dark' | 'auto_time' | 'system';
 
+export interface BatteryInfo {
+  supported: boolean;
+  level: number; // 0 to 100 percentage
+  charging: boolean;
+  chargingTime?: number;
+  dischargingTime?: number;
+}
+
 export type PrintPaperSize = '80mm' | '58mm' | '76mm' | 'a4' | 'label_50x30' | 'label_40x25' | 'label_60x40';
 
 export interface LabelAlignmentConfig {
@@ -411,6 +419,12 @@ export interface StoreSettings {
   nightModeStartHour?: number; // e.g. 18 (6:00 PM)
   nightModeEndHour?: number; // e.g. 6 (6:00 AM)
   cashierEyeComfort?: boolean;
+  // Battery & Power Saving Mode (Eco Mode for long battery shifts)
+  enablePowerSavingMode?: boolean; // Enable screen dimming and UI frequency throttling
+  powerSavingDimLevel?: number; // Dimming percentage (15% to 50%, default 25%)
+  powerSavingAutoDimTimeout?: number; // Inactivity timeout in minutes (0 = always dim, 1, 2, 3, 5 mins, default 1)
+  powerSavingThrottleUpdates?: boolean; // Slow down background intervals & UI refresh rates (default true)
+  powerSavingDisableAnimations?: boolean; // Turn off GPU transitions, blurs, and animations (default true)
   enableTax: boolean;
   defaultTaxRate: number; // percentage
   enableDiscounts: boolean;
@@ -420,6 +434,15 @@ export interface StoreSettings {
   receiptHeader: string;
   receiptFooter: string;
   printPaperSize: PrintPaperSize;
+  // Receipt Custom Margins & Thermal Paper Cut Feed Calibration
+  previewReceiptBeforePrint?: boolean; // Always show receipt preview modal before printing to prevent paper waste and verify layout
+  receiptTopMarginMm?: number; // Receipt top padding/margin in mm (default 3mm)
+  receiptBottomMarginMm?: number; // Receipt bottom margin in mm (default 4mm)
+  receiptLeftMarginMm?: number; // Receipt left margin in mm (default 3mm)
+  receiptRightMarginMm?: number; // Receipt right margin in mm (default 3mm)
+  receiptBottomCutFeedMm?: number; // Extra bottom paper feed spacing before auto-cutter blade (default 18mm) to prevent blade slicing barcode or totals
+  receiptFontScale?: 'compact' | 'normal' | 'large'; // Receipt typography scale
+  receiptCustomWidthMm?: number; // Custom thermal roll width in mm (e.g. 72, 70, 52)
   autoPrintOnSale: boolean;
   autoPrintKitchenTicket?: boolean;
   printCustomerAndMerchantCopies?: boolean;

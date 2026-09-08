@@ -30,7 +30,8 @@ import {
   WarehouseStockTransfer,
   CurrencyConfig,
   ExchangeRateBulletin,
-  ThemeMode
+  ThemeMode,
+  BatteryInfo
 } from '../types';
 import {
   initialSettings,
@@ -56,6 +57,7 @@ import {
   checkAndSendPeriodicDebtReminders
 } from '../services/debtCollectionService';
 import { indexedDbService } from '../services/indexedDbService';
+import { canAccessTab, hasActionPermission, getRoleInfo } from '../utils/permissions';
 
 
 export interface AppNotification {
@@ -80,6 +82,14 @@ interface AppContextType {
   isNightTime: boolean;
   nightModeStartHour: number;
   nightModeEndHour: number;
+
+  // Power Saving & Battery Saver (Eco Mode)
+  isPowerSavingActive: boolean;
+  isPowerSavingStandby: boolean;
+  togglePowerSaving: () => void;
+  setPowerSavingActive: (active: boolean) => void;
+  wakeFromStandby: () => void;
+  batteryInfo: BatteryInfo;
 
   // Business Operating Mode (Restaurant / Wholesale / Retail)
   businessMode: BusinessMode;
@@ -159,6 +169,7 @@ interface AppContextType {
   toggleCartItemTradeMode: (productId: string) => void;
   updateCartItemQuantity: (productId: string, quantity: number) => void;
   updateCartItemDiscount: (productId: string, discount: number, discountType: 'percentage' | 'fixed') => void;
+  updateCartItemPrice: (productId: string, newPrice: number) => void;
   removeFromCart: (productId: string) => void;
   clearCart: () => void;
   selectedCustomer: Customer | null;
@@ -633,6 +644,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setCurrentUser = (user: User) => {
     setCurrentUserState(user);
     localStorage.setItem(STORAGE_KEYS.CURRENT_USER_ID, user.id);
+    // If the active tab is forbidden for the switched role, safely redirect to POS
+    if (!canAccessTab(activeTab, user.role)) {
+      setActiveTab('pos');
+    }
   };
 
   const loginWithPin = (pin: string): boolean => {
@@ -640,8 +655,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (user) {
       setCurrentUser(user);
       soundEffects.playSuccess();
-      notify(`مرحباً ${user.name}`, `تم تسجيل الدخول بنجاح بصلاحية (${user.role})`, 'success');
-      logAudit('تسجيل دخول بالرمز السري', `المستخدم: ${user.name}`, 'low');
+      const roleMeta = getRoleInfo(user.role);
+      notify(`مرحباً ${user.name}`, `تم تسجيل الدخول بصلاحية: ${roleMeta.labelAr}`, 'success');
+      logAudit('تسجيل دخول بالرمز السري', `المستخدم: ${user.name} (${roleMeta.labelAr})`, 'low');
       return true;
     }
     soundEffects.playWarning();
@@ -650,21 +666,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const hasPermission = (action: string): boolean => {
-    if (currentUser.role === 'owner' || currentUser.role === 'admin') return true;
-    if (currentUser.role === 'manager') {
-      return action !== 'delete_all_database';
-    }
-    if (currentUser.role === 'cashier') {
-      const allowed = ['create_sale', 'scan_qr', 'view_products', 'apply_discount', 'search_customer'];
-      return allowed.includes(action);
-    }
-    if (currentUser.role === 'inventory') {
-      return ['view_inventory', 'adjust_stock', 'add_product', 'edit_product'].includes(action);
-    }
-    if (currentUser.role === 'accountant') {
-      return ['view_reports', 'view_invoices', 'view_expenses', 'add_expense'].includes(action);
-    }
-    return false;
+    return hasActionPermission(action as any, currentUser.role);
   };
 
   const addStaff = (staffData: Omit<User, 'id' | 'createdAt'>) => {
@@ -1359,6 +1361,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
               discount,
               discountType,
               total: calculateItemTotal(item.unitPrice, item.quantity, discount, discountType)
+            }
+          : item
+      )
+    );
+  };
+
+  const updateCartItemPrice = (productId: string, newPrice: number) => {
+    if (newPrice < 0) return;
+    soundEffects.playClick();
+    setCart(prev =>
+      prev.map(item =>
+        item.productId === productId
+          ? {
+              ...item,
+              unitPrice: newPrice,
+              total: calculateItemTotal(newPrice, item.quantity, item.discount, item.discountType)
             }
           : item
       )
@@ -3034,6 +3052,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleCartItemTradeMode,
         updateCartItemQuantity,
         updateCartItemDiscount,
+        updateCartItemPrice,
         removeFromCart,
         clearCart,
         selectedCustomer,

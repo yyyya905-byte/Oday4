@@ -34,6 +34,7 @@ import { PinSwitchModal } from '../modals/PinSwitchModal';
 import { ExchangeBulletinBar } from '../currency/ExchangeBulletinBar';
 import { ExchangeBulletinModal } from '../currency/ExchangeBulletinModal';
 import { BarcodeDesignerModal } from '../barcode/BarcodeDesignerModal';
+import { canAccessTab, getRoleInfo } from '../../utils/permissions';
 
 export const Header: React.FC = () => {
   const {
@@ -69,6 +70,7 @@ export const Header: React.FC = () => {
 
   const unreadCount = notifications.filter(n => !n.read).length;
   const onlineDevicesCount = devices.filter(d => d.isOnline).length;
+  const roleInfo = getRoleInfo(currentUser.role);
 
   const modeBadge = {
     restaurant: {
@@ -208,27 +210,31 @@ export const Header: React.FC = () => {
           <span className="hidden lg:inline">نقل بكود</span>
         </button>
 
-        {/* Quick Google Drive Backup Hub Button */}
-        <button
-          id="btn-header-gdrive-sync"
-          onClick={() => setActiveTab('settings')}
-          className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
-          title="النسخ الاحتياطي السحابي (Google Drive)"
-        >
-          <Cloud className="w-3.5 h-3.5 text-amber-500" />
-          <span className="hidden xl:inline">{settings.googleDriveConnected ? 'سحابة Google' : 'نسخ Google'}</span>
-        </button>
+        {/* Quick Google Drive Backup Hub Button (Admins/Managers Only) */}
+        {canAccessTab('settings', currentUser.role) && (
+          <button
+            id="btn-header-gdrive-sync"
+            onClick={() => setActiveTab('settings')}
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
+            title="النسخ الاحتياطي السحابي (Google Drive)"
+          >
+            <Cloud className="w-3.5 h-3.5 text-amber-500" />
+            <span className="hidden xl:inline">{settings.googleDriveConnected ? 'سحابة Google' : 'نسخ Google'}</span>
+          </button>
+        )}
 
-        {/* Quick Gemini AI Engine Button */}
-        <button
-          id="btn-header-gemini-ai"
-          onClick={() => setActiveTab('ai')}
-          className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white text-xs font-black shadow-xs hover:scale-105 active:scale-95 transition-all cursor-pointer"
-          title={language === 'ar' ? 'المساعد الذكي (Gemini AI)' : 'AI Intelligence (Gemini)'}
-        >
-          <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-          <span className="hidden lg:inline">{language === 'ar' ? 'الذكاء الاصطناعي' : 'Gemini AI'}</span>
-        </button>
+        {/* Quick Gemini AI Engine Button (Supervisors/Managers Only) */}
+        {canAccessTab('ai', currentUser.role) && (
+          <button
+            id="btn-header-gemini-ai"
+            onClick={() => setActiveTab('ai')}
+            className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white text-xs font-black shadow-xs hover:scale-105 active:scale-95 transition-all cursor-pointer"
+            title={language === 'ar' ? 'المساعد الذكي (Gemini AI)' : 'AI Intelligence (Gemini)'}
+          >
+            <Sparkles className="w-3.5 h-3.5 animate-pulse" />
+            <span className="hidden lg:inline">{language === 'ar' ? 'الذكاء الاصطناعي' : 'Gemini AI'}</span>
+          </button>
+        )}
 
         {/* Mobile Quick Tools Menu Button */}
         <div className="sm:hidden relative">
@@ -472,8 +478,8 @@ export const Header: React.FC = () => {
         <button
           id="btn-user-profile-shift"
           onClick={() => setIsPinModalOpen(true)}
-          className="flex items-center gap-2 p-1.5 sm:px-2.5 sm:py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 border border-slate-200 dark:border-slate-700 transition-all text-start"
-          title={t('switchCashier')}
+          className="flex items-center gap-2 p-1.5 sm:px-2.5 sm:py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 border border-slate-200 dark:border-slate-700 transition-all text-start cursor-pointer"
+          title={`${currentUser.name} (${roleInfo.labelAr}) - انقر للتبديل السريع`}
         >
           <div className="w-7 h-7 rounded-lg overflow-hidden bg-amber-500 text-white flex items-center justify-center font-bold text-xs shrink-0">
             {currentUser.avatar ? (
@@ -483,12 +489,12 @@ export const Header: React.FC = () => {
             )}
           </div>
           <div className="hidden sm:block leading-tight">
-            <p className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[100px]">
+            <p className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[110px]">
               {currentUser.name}
             </p>
-            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-0.5">
+            <span className={`text-[9px] font-black px-1.5 py-0.2 rounded border inline-flex items-center gap-0.5 ${roleInfo.badgeColor}`}>
               <ShieldCheck className="w-2.5 h-2.5" />
-              {currentUser.role}
+              {roleInfo.badgeLabel}
             </span>
           </div>
         </button>

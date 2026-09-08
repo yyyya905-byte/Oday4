@@ -68,11 +68,21 @@ export const PrintableReturnModal: React.FC<PrintableReturnModalProps> = ({
         </div>
 
         {/* Printable Voucher Paper */}
-        <div className="p-5 overflow-y-auto max-h-[75vh]">
+        <div className="p-5 overflow-y-auto max-h-[75vh] flex justify-center bg-slate-100 dark:bg-slate-950/50">
           <div
+            id="printable-return-voucher"
             ref={printRef}
-            className="p-4 bg-white text-slate-900 font-sans border border-slate-200 rounded-2xl shadow-xs print:p-0 print:border-none print:shadow-none"
-            style={{ minWidth: '280px' }}
+            className="bg-white text-slate-900 font-sans border border-slate-200 rounded-2xl shadow-xs print:border-none print:shadow-none"
+            style={{
+              width: settings.printPaperSize === '58mm' ? '54mm' : '76mm',
+              maxWidth: '100%',
+              margin: '0 auto',
+              paddingTop: `${settings.receiptTopMarginMm ?? 3}mm`,
+              paddingBottom: `${settings.receiptBottomMarginMm ?? 4}mm`,
+              paddingRight: `${settings.receiptRightMarginMm ?? 3}mm`,
+              paddingLeft: `${settings.receiptLeftMarginMm ?? 3}mm`,
+              boxSizing: 'border-box'
+            }}
           >
             {/* Store Branding */}
             <div className="text-center pb-3 border-b border-dashed border-slate-300">
@@ -210,6 +220,29 @@ export const PrintableReturnModal: React.FC<PrintableReturnModalProps> = ({
             <div className="text-center pt-3 text-[9px] text-slate-400">
               <p>نظام كيان كاشير الذكي لإدارة نقاط البيع والمرتجعات</p>
             </div>
+
+            {/* Thermal Cutter Safe Clearance Feed Space */}
+            <div
+              style={{
+                height: `${settings.receiptBottomCutFeedMm ?? 18}mm`,
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              className="relative no-print group"
+            >
+              <div className="w-full border-b border-dashed border-rose-300 dark:border-rose-700/60 my-auto relative">
+                <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full text-[8px] font-bold flex items-center gap-1 border border-rose-200">
+                  ✂ خط قاطع الطابعة الحرارية ({settings.receiptBottomCutFeedMm ?? 18}mm)
+                </span>
+              </div>
+            </div>
+            {/* Blank Feed Spacer for Print Hardware */}
+            <div
+              className="hidden print:block"
+              style={{ height: `${settings.receiptBottomCutFeedMm ?? 18}mm` }}
+            />
           </div>
         </div>
 
