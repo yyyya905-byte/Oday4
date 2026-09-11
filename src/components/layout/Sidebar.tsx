@@ -26,6 +26,7 @@ import {
   ShieldCheck,
   KeyRound
 } from 'lucide-react';
+import { GoogleIcon } from '../common/GoogleIcon';
 
 interface NavSection {
   title: string;
@@ -42,7 +43,7 @@ interface NavSection {
 }
 
 export const Sidebar: React.FC = () => {
-  const { activeTab, setActiveTab, t, products, cart, devices, deliveryVehicles, settings, currentUser, setIsPinModalOpen } = useApp();
+  const { activeTab, setActiveTab, t, products, cart, devices, deliveryVehicles, settings, currentUser, googleUser, isGoogleSignedIn, setIsPinModalOpen } = useApp();
 
   const lowStockCount = products.filter(p => p.stock <= p.minStock && p.status === 'active').length;
   const vehiclesOnRoute = deliveryVehicles.filter(v => v.status === 'on_route').length;
@@ -50,6 +51,73 @@ export const Sidebar: React.FC = () => {
   const onlineDevicesCount = devices.filter(d => d.isOnline).length;
   const isGoogleDriveConnected = Boolean(settings.googleDriveConnected);
   const roleInfo = getRoleInfo(currentUser.role);
+
+  const tabDescriptions: Record<ActiveTab, { title: string; desc: string }> = {
+    pos: {
+      title: 'شاشة الكاشير ونقطة البيع (POS)',
+      desc: 'إصدار الفواتير الفورية، وتمرير المنتجات بالباركود، والدفع نقداً أو بالبطاقة أو آجل.'
+    },
+    products: {
+      title: 'كتالوج وإدارة المنتجات',
+      desc: 'إضافة وتعديل المنتجات وأسعار التجزئة والجملة، وإدارة وحدات القياس وأكواد الباركود.'
+    },
+    customers: {
+      title: 'سجل العملاء والولاء',
+      desc: 'إدارة بيانات العملاء، وسجلات الشراء، ورصيد نقاط المكافآت وكشوف الحساب.'
+    },
+    debts: {
+      title: 'دفتر الديون والمستحقات',
+      desc: 'متابعة الديون الآجلة على الزبائن، ومستحقات الموردين وسندات القبض والصرف.'
+    },
+    invoices: {
+      title: 'أرشيف المبيعات والفواتير',
+      desc: 'سجل الفواتير الصادرة، وإعادة طباعة الإيصالات، وتصدير التقارير الضريبية.'
+    },
+    returns: {
+      title: 'إدارة المرتجعات والاسترجاع',
+      desc: 'معالجة استرجاع الفواتير بمسح الباركود، وإرجاع المنتجات لمخزون المستودع.'
+    },
+    trade: {
+      title: 'مركز تجارة الجملة والتوزيع',
+      desc: 'إدارة طلبيات كبار التجار، ومستويات أسعار الجملة ونصف الجملة والتوزيع.'
+    },
+    inventory: {
+      title: 'المخازن والجرد وسيارات النقل',
+      desc: 'مراقبة كميات المخزون، وجرد المستودعات، وتوزيع البضائع عبر سيارات النقل.'
+    },
+    dashboard: {
+      title: 'لوحة التحكم والمؤشرات',
+      desc: 'إحصائيات المبيعات اللحظية، والأرباح الصافية، والمنتجات الأكثر طلباً.'
+    },
+    ai: {
+      title: 'المساعد الذكي (Gemini AI)',
+      desc: 'تحليل أداء المتجر بالذكاء الاصطناعي، واقتراح خطط تسعير ذكية وتنبؤات المخزون.'
+    },
+    expenses: {
+      title: 'المصروفات والمصاريف اليومية',
+      desc: 'تسجيل مصاريف المحل والكهرباء والإيجار والرواتب لمطابقتها في كشف الأرباح.'
+    },
+    reports: {
+      title: 'التقارير المالية والمحاسبية',
+      desc: 'تقارير الإيرادات، والأرباح، والضريبة، وحركة الصندوق والورديات.'
+    },
+    staff: {
+      title: 'طاقم العمل والموظفين',
+      desc: 'إدارة صلاحيات الكاشير والمشرفين، ومتابعة سجلات تسجيل الدخول والورديات.'
+    },
+    devices: {
+      title: 'مركز ربط الأجهزة والشاشات',
+      desc: 'مزامنة شاشات المطبخ KDS، شاشات العرض للعملاء، ونقاط البيع الإضافية.'
+    },
+    settings: {
+      title: 'إعدادات النظام والنسخ السحابي',
+      desc: 'تخصيص معلومات المتجر، وإعدادات الطابعات، ومزامنة النسخ مع Google Drive.'
+    },
+    about: {
+      title: 'حول النظام والدعم الفني',
+      desc: 'معلومات الإصدار، حالة قاعدة البيانات المحلية، وإرشادات الاستخدام.'
+    }
+  };
 
   const navSections: NavSection[] = [
     {
@@ -211,12 +279,15 @@ export const Sidebar: React.FC = () => {
               {section.items.map(item => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
+                const tooltip = tabDescriptions[item.id] || { title: t(item.labelKey), desc: '' };
 
                 return (
                   <button
                     key={item.id}
                     id={`sidebar-tab-${item.id}`}
                     onClick={() => setActiveTab(item.id)}
+                    data-longpress-title={tooltip.title}
+                    data-longpress-desc={tooltip.desc}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                       isActive
                         ? 'bg-amber-500 text-slate-950 shadow-md shadow-amber-500/20 font-extrabold'
@@ -253,17 +324,27 @@ export const Sidebar: React.FC = () => {
         <div className="p-2.5 rounded-2xl bg-white dark:bg-slate-800/80 border border-slate-200/80 dark:border-slate-700/80 shadow-2xs">
           <div className="flex items-center justify-between gap-2 mb-1.5">
             <div className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 rounded-lg overflow-hidden bg-amber-500 text-white flex items-center justify-center font-bold text-xs shrink-0">
+              <div className="relative w-7 h-7 rounded-lg overflow-hidden bg-amber-500 text-white flex items-center justify-center font-bold text-xs shrink-0">
                 {currentUser.avatar ? (
                   <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 ) : (
                   currentUser.name.charAt(0)
                 )}
+                {(currentUser.isGoogleAccount || (isGoogleSignedIn && currentUser.email === googleUser?.email)) && (
+                  <span className="absolute -bottom-0.5 -end-0.5 bg-white dark:bg-slate-900 rounded-full p-0.5 shadow-2xs">
+                    <GoogleIcon className="w-2 h-2" />
+                  </span>
+                )}
               </div>
               <div className="min-w-0">
-                <span className="text-xs font-black text-slate-900 dark:text-white truncate block">
-                  {currentUser.name}
-                </span>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs font-black text-slate-900 dark:text-white truncate block">
+                    {currentUser.name}
+                  </span>
+                  {(currentUser.isGoogleAccount || (isGoogleSignedIn && currentUser.email === googleUser?.email)) && (
+                    <GoogleIcon className="w-2.5 h-2.5 shrink-0" />
+                  )}
+                </div>
                 <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-md border inline-flex items-center gap-1 ${roleInfo.badgeColor}`}>
                   <ShieldCheck className="w-2.5 h-2.5" />
                   {roleInfo.badgeLabel}
@@ -273,6 +354,8 @@ export const Sidebar: React.FC = () => {
 
             <button
               onClick={() => setIsPinModalOpen(true)}
+              data-longpress-title="تبديل المستخدم ورمز الـ PIN"
+              data-longpress-desc="تغيير المستخدم النشط أو إغلاق الوردية الحالية باستخدام رمز المرور الشخصي."
               className="p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400 hover:text-amber-600 transition-colors cursor-pointer"
               title="تبديل المستخدم أو الصلاحية (PIN)"
             >

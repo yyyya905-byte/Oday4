@@ -39,7 +39,11 @@ import {
   EyeOff,
   Layers,
   HeartHandshake,
-  Printer
+  Printer,
+  Battery,
+  BatteryCharging,
+  Leaf,
+  Zap
 } from 'lucide-react';
 import { soundEffects } from '../../services/audio';
 import { GoogleDriveBackupSection } from '../backup/GoogleDriveBackupSection';
@@ -67,7 +71,11 @@ export const SettingsView: React.FC = () => {
     themeMode,
     setThemeMode,
     toggleTheme,
-    isNightTime
+    isNightTime,
+    isPowerSavingActive,
+    togglePowerSaving,
+    setPowerSavingActive,
+    batteryInfo
   } = useApp();
 
   const [activeSubTab, setActiveSubTab] = useState<'appearance' | 'currency' | 'google_drive' | 'general' | 'retail_pos' | 'wholesale_depot' | 'debt_whatsapp' | 'printer'>('appearance');
@@ -1412,18 +1420,25 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
 
-          {/* Configuration Form for Automatic Night Mode Hours */}
+          {/* Configuration Form for Automatic Night Mode Hours and Battery Power-Saving Mode */}
           <form
             onSubmit={e => {
               e.preventDefault();
+              const isPowerSaving = Boolean(formData.enablePowerSavingMode);
               updateSettings({
                 nightModeStartHour: formData.nightModeStartHour ?? 18,
                 nightModeEndHour: formData.nightModeEndHour ?? 6,
                 cashierEyeComfort: formData.cashierEyeComfort !== false,
                 themeMode: formData.themeMode || themeMode,
+                enablePowerSavingMode: isPowerSaving,
+                powerSavingDimLevel: formData.powerSavingDimLevel ?? 25,
+                powerSavingAutoDimTimeout: formData.powerSavingAutoDimTimeout ?? 1,
+                powerSavingThrottleUpdates: formData.powerSavingThrottleUpdates !== false,
+                powerSavingDisableAnimations: formData.powerSavingDisableAnimations !== false,
               });
+              setPowerSavingActive(isPowerSaving);
               soundEffects.playSuccess();
-              notify('تم حفظ إعدادات مواعيد الوضع الليلي وراحة عين الكاشير بنجاح', 'success');
+              notify('تم حفظ إعدادات المظهر، الوضع الليلي، ووضع توفير الطاقة بنجاح', 'success');
             }}
             className="space-y-6"
           >
@@ -1530,6 +1545,215 @@ export const SettingsView: React.FC = () => {
               </div>
             </div>
 
+            {/* Battery & Eco Power-Saving Mode Card */}
+            <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                    <Leaf className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                        وضع توفير الطاقة وحماية بطارية الكاشير (Eco Power-Saving)
+                      </h3>
+                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
+                        مخصص للورديات الطويلة وأجهزة البطارية
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      يقوم بتعتيم الشاشة وخفض وتيرة تحديثات واجهة المستخدم وإيقاف المؤثرات لتوفير طاقة البطارية لأقصى وقت تشغيل.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Device Battery Status Badge */}
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-mono font-bold">
+                  {batteryInfo.supported ? (
+                    <>
+                      {batteryInfo.charging ? (
+                        <BatteryCharging className="w-4 h-4 text-emerald-500" />
+                      ) : (
+                        <Battery className={`w-4 h-4 ${batteryInfo.level <= 20 ? 'text-rose-500' : 'text-slate-600 dark:text-slate-300'}`} />
+                      )}
+                      <span>بطارية الجهاز:</span>
+                      <span className={`font-black ${batteryInfo.level <= 20 ? 'text-rose-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                        {batteryInfo.level}% {batteryInfo.charging ? '(متصل بالشاحن ⚡)' : ''}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4 text-amber-500" />
+                      <span>متوافق مع أجهزة نقاط البيع المحمولة والتابلت</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* Master Power Saving Toggle */}
+              <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className={`p-2.5 rounded-xl transition-colors ${
+                    formData.enablePowerSavingMode
+                      ? 'bg-emerald-500 text-white shadow-md shadow-emerald-500/20'
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
+                  }`}>
+                    <Leaf className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <label htmlFor="master-powersaving-toggle" className="text-xs font-black text-slate-900 dark:text-white cursor-pointer block">
+                      تفعيل وضع توفير الطاقة الآن (Eco Mode)
+                    </label>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      يُطبق تعتيم الشاشة فوراً ويضبط وتيرة تحديثات النظام لتوفير استهلاك الطاقة أثناء العمل.
+                    </p>
+                  </div>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer select-none shrink-0">
+                  <input
+                    type="checkbox"
+                    id="master-powersaving-toggle"
+                    checked={Boolean(formData.enablePowerSavingMode)}
+                    onChange={e => {
+                      const enabled = e.target.checked;
+                      setFormData({ ...formData, enablePowerSavingMode: enabled });
+                      setPowerSavingActive(enabled);
+                    }}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] peer-checked:after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-emerald-500"></div>
+                </label>
+              </div>
+
+              {/* Power Saving Configuration Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                {/* 1. Screen Dimming Level */}
+                <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                      <span>درجة تعتيم الشاشة الموفر للطاقة:</span>
+                      <span className="text-emerald-600 dark:text-emerald-400 font-mono font-black">{formData.powerSavingDimLevel ?? 25}%</span>
+                    </label>
+                    <span className="text-[10px] text-slate-400">
+                      {(formData.powerSavingDimLevel ?? 25) <= 20 ? 'تعتيم خفيف' : (formData.powerSavingDimLevel ?? 25) <= 30 ? 'متوازن ومثالي' : 'توفير فائق'}
+                    </span>
+                  </div>
+
+                  <input
+                    type="range"
+                    min={15}
+                    max={50}
+                    step={5}
+                    value={formData.powerSavingDimLevel ?? 25}
+                    onChange={e => {
+                      const val = Number(e.target.value);
+                      setFormData({ ...formData, powerSavingDimLevel: val });
+                      if (formData.enablePowerSavingMode) {
+                        document.documentElement.style.setProperty('--ps-brightness', ((100 - val) / 100).toFixed(2));
+                      }
+                    }}
+                    className="w-full accent-emerald-500 cursor-pointer"
+                  />
+
+                  {/* Quick Select Preset Pills */}
+                  <div className="flex items-center gap-2 pt-1">
+                    {[
+                      { label: '15% خفيف', val: 15 },
+                      { label: '25% موصى به', val: 25 },
+                      { label: '35% توفير قوي', val: 35 },
+                      { label: '50% طوارئ', val: 50 },
+                    ].map(preset => (
+                      <button
+                        key={preset.val}
+                        type="button"
+                        onClick={() => {
+                          setFormData({ ...formData, powerSavingDimLevel: preset.val });
+                          if (formData.enablePowerSavingMode) {
+                            document.documentElement.style.setProperty('--ps-brightness', ((100 - preset.val) / 100).toFixed(2));
+                          }
+                        }}
+                        className={`flex-1 py-1 px-2 text-[10px] font-bold rounded-lg transition-all cursor-pointer ${
+                          (formData.powerSavingDimLevel ?? 25) === preset.val
+                            ? 'bg-emerald-500 text-white shadow-xs'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200'
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    يقلل استهلاك إضاءة الشاشة الخلفية (LCD / OLED) مع المحافظة على وضوح أرقام الفاتورة.
+                  </p>
+                </div>
+
+                {/* 2. Auto-Dim on Inactivity (Standby) */}
+                <div className="p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-white dark:bg-slate-900/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      التعتيم التلقائي عند عدم النشاط (الاستعداد الذكي):
+                    </label>
+                  </div>
+
+                  <select
+                    value={formData.powerSavingAutoDimTimeout ?? 1}
+                    onChange={e => setFormData({ ...formData, powerSavingAutoDimTimeout: Number(e.target.value) })}
+                    className="w-full text-xs font-bold px-3 py-2.5 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl border border-slate-200 dark:border-slate-700 focus:outline-none cursor-pointer"
+                  >
+                    <option value={0}>تعتيم مستمر دائماً (بدون انتظار)</option>
+                    <option value={1}>بعد دقيقة واحدة من عدم اللمس (موصى به)</option>
+                    <option value={2}>بعد دقيقتين من عدم اللمس</option>
+                    <option value={3}>بعد 3 دقائق من عدم اللمس</option>
+                    <option value={5}>بعد 5 دقائق من عدم اللمس</option>
+                  </select>
+
+                  <p className="text-[10px] text-slate-400">
+                    عند ترك جهاز الكاشير في فترات الهدوء، تنتقل الشاشة فوراً لتعتيم خفيف لتوفير الطاقة، وتستيقظ فور لمسها أو مسح باركود.
+                  </p>
+                </div>
+              </div>
+
+              {/* Throttling and Animation Controls */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-slate-100 dark:border-slate-800">
+                {/* Throttle UI Updates */}
+                <label className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-700/60 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.powerSavingThrottleUpdates !== false}
+                    onChange={e => setFormData({ ...formData, powerSavingThrottleUpdates: e.target.checked })}
+                    className="mt-1 rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                      تقليل وتيرة تحديثات واجهة المستخدم (UI Throttling)
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 block leading-relaxed">
+                      يقلل وتيرة الفحص الخلفي وتحديث الساعات وتكرار طلبات المزامنة لتخفيف حمل المعالج وتبريد الجهاز.
+                    </span>
+                  </div>
+                </label>
+
+                {/* Disable Animations & Blurs */}
+                <label className="flex items-start gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-700/60 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={formData.powerSavingDisableAnimations !== false}
+                    onChange={e => setFormData({ ...formData, powerSavingDisableAnimations: e.target.checked })}
+                    className="mt-1 rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                      تعطيل المؤثرات الحركية والانتقالات والـ Blur
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 block leading-relaxed">
+                      يقوم بإيقاف مؤثرات الضبابية والظلال المتحركة الثقيلة لتوفير معالجة كرت الشاشة (GPU) والبطارية.
+                    </span>
+                  </div>
+                </label>
+              </div>
+            </div>
+
             {/* Quick Live Preview Bar */}
             <div className="p-4 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300">
@@ -1555,7 +1779,7 @@ export const SettingsView: React.FC = () => {
                   className="flex items-center gap-2 px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl shadow-md shadow-amber-500/20 transition-all cursor-pointer"
                 >
                   <Save className="w-4 h-4" />
-                  <span>حفظ إعدادات المظهر والوضع الليلي</span>
+                  <span>حفظ إعدادات المظهر ووضع توفير الطاقة</span>
                 </button>
               </div>
             </div>

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import {
   Product,
   Category,
@@ -13,6 +13,8 @@ import {
   Expense,
   AuditLog,
   User,
+  UserRole,
+  GoogleAuthUser,
   StoreSettings,
   ActiveTab,
   CartItem,
@@ -57,6 +59,7 @@ import {
   checkAndSendPeriodicDebtReminders
 } from '../services/debtCollectionService';
 import { indexedDbService } from '../services/indexedDbService';
+import { googleAuthService } from '../services/googleAuthService';
 import { canAccessTab, hasActionPermission, getRoleInfo } from '../utils/permissions';
 
 
@@ -136,6 +139,13 @@ interface AppContextType {
   addUser: (user: Omit<User, 'id' | 'createdAt'>) => void;
   updateUser: (id: string, user: Partial<User>) => void;
   deleteUser: (id: string) => void;
+
+  // Google Authentication
+  googleUser: GoogleAuthUser | null;
+  isGoogleSignedIn: boolean;
+  isGoogleAuthLoading: boolean;
+  signInWithGoogle: (options?: { hintEmail?: string; role?: UserRole; forceFallback?: boolean }) => Promise<boolean>;
+  signOutGoogle: () => void;
 
   // Store Settings & Currency
   settings: StoreSettings;
@@ -609,6 +619,143 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     soundEffects.setMuted(!settings.soundEffects);
   }, [settings.soundEffects]);
 
+  // =========================================================================
+  // Power Saving & Battery Saver Engine (Eco Mode for long battery shifts)
+  // =========================================================================
+  const [isPowerSavingActive, setIsPowerSavingActiveState] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('kian_power_saving_active');
+      if (saved !== null) return saved === 'true';
+      return Boolean(settings.enablePowerSavingMode);
+    } catch {
+      return Boolean(settings.enablePowerSavingMode);
+    }
+  });
+
+  const [isPowerSavingStandby, setIsPowerSavingStandby] = useState<boolean>(false);
+
+  // Battery detection with Navigator Battery API (supported in Chromium/Android/Electron)
+  const [batteryInfo, setBatteryInfo] = useState<BatteryInfo>({
+    supported: false,
+    level: 100,
+    charging: true,
+  });
+
+  useEffect(() => {
+    let batteryManager: any = null;
+    let isSubscribed = true;
+
+    if (typeof navigator !== 'undefined' && 'getBattery' in (navigator as any)) {
+      (navigator as any).getBattery().then((bm: any) => {
+        if (!isSubscribed) return;
+        batteryManager = bm;
+        const updateBattery = () => {
+          setBatteryInfo({
+            supported: true,
+            level: Math.round(bm.level * 100),
+            charging: Boolean(bm.charging),
+            chargingTime: bm.chargingTime,
+            dischargingTime: bm.dischargingTime,
+          });
+        };
+        updateBattery();
+        bm.addEventListener('levelchange', updateBattery);
+        bm.addEventListener('chargingchange', updateBattery);
+      }).catch(() => {
+        // Battery API not supported or user denied
+      });
+    }
+
+    return () => {
+      isSubscribed = false;
+      if (batteryManager) {
+        batteryManager.removeEventListener?.('levelchange', () => {});
+        batteryManager.removeEventListener?.('chargingchange', () => {});
+      }
+    };
+  }, []);
+
+  // Synchronize CSS filter and class on documentElement
+  useEffect(() => {
+    const root = document.documentElement;
+    if (isPowerSavingActive) {
+      root.classList.add('power-saving-active');
+      const dimLevel = settings.powerSavingDimLevel || 25;
+      const brightnessVal = Math.max(0.4, (100 - dimLevel) / 100);
+      root.style.setProperty('--ps-brightness', brightnessVal.toFixed(2));
+    } else {
+      root.classList.remove('power-saving-active');
+      root.style.removeProperty('--ps-brightness');
+    }
+  }, [isPowerSavingActive, settings.powerSavingDimLevel]);
+
+  // Standby Dimming on Inactivity
+  useEffect(() => {
+    const root = document.documentElement;
+    if (isPowerSavingStandby) {
+      root.classList.add('power-saving-standby');
+    } else {
+      root.classList.remove('power-saving-standby');
+    }
+  }, [isPowerSavingStandby]);
+
+  // Inactivity detection for auto-dimming when power saving is active
+  useEffect(() => {
+    const autoDimTimeoutMinutes = settings.powerSavingAutoDimTimeout ?? 1;
+    if (!isPowerSavingActive || autoDimTimeoutMinutes <= 0) {
+      setIsPowerSavingStandby(false);
+      return;
+    }
+
+    let timeoutId: NodeJS.Timeout;
+
+    const resetIdleTimer = () => {
+      setIsPowerSavingStandby(false);
+      clearTimeout(timeoutId);
+      timeoutId = setTimeout(() => {
+        setIsPowerSavingStandby(true);
+      }, autoDimTimeoutMinutes * 60 * 1000);
+    };
+
+    resetIdleTimer();
+
+    const activityEvents = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'pointerdown'];
+    activityEvents.forEach(evt => {
+      window.addEventListener(evt, resetIdleTimer, { passive: true });
+    });
+
+    return () => {
+      clearTimeout(timeoutId);
+      activityEvents.forEach(evt => {
+        window.removeEventListener(evt, resetIdleTimer);
+      });
+    };
+  }, [isPowerSavingActive, settings.powerSavingAutoDimTimeout]);
+
+  const wakeFromStandby = useCallback(() => {
+    setIsPowerSavingStandby(false);
+  }, []);
+
+  const setPowerSavingActive = (active: boolean) => {
+    setIsPowerSavingActiveState(active);
+    localStorage.setItem('kian_power_saving_active', active ? 'true' : 'false');
+    updateSettings({ enablePowerSavingMode: active });
+    if (active) {
+      notify(
+        'وضع توفير الطاقة نشط',
+        'تم تعتيم الشاشة وإيقاف المؤثرات لتوفير شحن البطارية للكاشير لأقصى مدة تشغيل',
+        'info'
+      );
+    } else {
+      setIsPowerSavingStandby(false);
+      notify('تم تعطيل وضع توفير الطاقة', 'عادت الشاشة لدرجة السطوع العادية وكامل المؤثرات الحركية', 'info');
+    }
+  };
+
+  const togglePowerSaving = () => {
+    setPowerSavingActive(!isPowerSavingActive);
+  };
+
   // Currency Formatter
   const formatCurrency = (amount: number): string => {
     const num = Number(amount) || 0;
@@ -701,6 +848,89 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUsersState(updated);
     localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updated));
     notify('تم حذف الموظف', '', 'info');
+  };
+
+  // Google Authentication State & Handlers
+  const [googleUser, setGoogleUserState] = useState<GoogleAuthUser | null>(() => {
+    return googleAuthService.getGoogleUser();
+  });
+  const [isGoogleAuthLoading, setIsGoogleAuthLoading] = useState<boolean>(false);
+  const isGoogleSignedIn = Boolean(googleUser && googleUser.email);
+
+  const signInWithGoogle = async (options?: { hintEmail?: string; role?: UserRole; forceFallback?: boolean }): Promise<boolean> => {
+    setIsGoogleAuthLoading(true);
+    try {
+      const res = await googleAuthService.signInWithGoogle(options);
+      if (res.success && res.user) {
+        setGoogleUserState(res.user);
+        
+        // Find existing user by email or googleEmail or googleId
+        const targetEmail = res.user.email.toLowerCase();
+        const existingUser = users.find(u => 
+          (u.email && u.email.toLowerCase() === targetEmail) ||
+          (u.googleEmail && u.googleEmail.toLowerCase() === targetEmail) ||
+          (u.googleId && u.googleId === res.user!.id)
+        );
+
+        let activeAuthUser: User;
+        if (existingUser) {
+          activeAuthUser = {
+            ...existingUser,
+            googleEmail: res.user.email,
+            googleId: res.user.id,
+            isGoogleAccount: true,
+            avatar: res.user.picture || existingUser.avatar,
+            name: res.user.name || existingUser.name,
+          };
+          const updatedUsers = users.map(u => u.id === existingUser.id ? activeAuthUser : u);
+          setUsersState(updatedUsers);
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
+        } else {
+          // Provision new user for this Google account with Owner role
+          activeAuthUser = {
+            id: `usr_google_${Date.now()}`,
+            name: res.user.name || 'حساب Google',
+            email: res.user.email,
+            role: res.user.role || 'owner',
+            avatar: res.user.picture || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&q=80',
+            pinCode: '0000',
+            active: true,
+            createdAt: new Date().toISOString(),
+            isGoogleAccount: true,
+            googleEmail: res.user.email,
+            googleId: res.user.id,
+          };
+          const updatedUsers = [activeAuthUser, ...users];
+          setUsersState(updatedUsers);
+          localStorage.setItem(STORAGE_KEYS.USERS, JSON.stringify(updatedUsers));
+        }
+
+        setCurrentUser(activeAuthUser);
+        soundEffects.playSuccess();
+        notify('تم تسجيل الدخول بحساب Google بنجاح', `مرحباً ${activeAuthUser.name} (${activeAuthUser.email})`, 'success');
+        logAudit('تسجيل دخول بحساب Google', `المستخدم: ${activeAuthUser.name} (${activeAuthUser.email})`, 'low');
+        return true;
+      } else {
+        soundEffects.playWarning();
+        notify('تعذر تسجيل الدخول عبر Google', res.error || 'يرجى المحاولة مرة أخرى', 'error');
+        return false;
+      }
+    } catch (err: any) {
+      console.error('Google Sign-in exception:', err);
+      notify('خطأ في تسجيل الدخول', err.message || 'حدث خطأ أثناء الاتصال بخدمات Google', 'error');
+      return false;
+    } finally {
+      setIsGoogleAuthLoading(false);
+    }
+  };
+
+  const signOutGoogle = () => {
+    const prevEmail = googleUser?.email || '';
+    googleAuthService.signOut();
+    setGoogleUserState(null);
+    soundEffects.playClick();
+    notify('تم تسجيل الخروج من Google', 'تم إنهاء الجلسة، يمكنك التبديل لأي مستخدم آخر أو رمز PIN', 'info');
+    logAudit('تسجيل خروج من Google', `تم تسجيل الخروج لحساب ${prevEmail}`, 'low');
   };
 
   // 7. Categories & Products
@@ -2987,6 +3217,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isNightTime,
         nightModeStartHour,
         nightModeEndHour,
+        isPowerSavingActive,
+        isPowerSavingStandby,
+        togglePowerSaving,
+        setPowerSavingActive,
+        wakeFromStandby,
+        batteryInfo,
         businessMode,
         setBusinessMode,
         isModeModalOpen,
@@ -3025,6 +3261,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addUser: addStaff,
         updateUser: updateStaff,
         deleteUser: deleteStaff,
+        googleUser,
+        isGoogleSignedIn,
+        isGoogleAuthLoading,
+        signInWithGoogle,
+        signOutGoogle,
         settings,
         storeSettings: settings,
         updateSettings,

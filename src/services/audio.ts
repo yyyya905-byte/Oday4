@@ -1,4 +1,5 @@
-// Web Audio API Sound Generator for Tactile POS Feedback
+// Web Audio API Sound Generator with Integrated Tactile Haptic Feedback
+import { haptics } from './haptics';
 
 class SoundService {
   private ctx: AudioContext | null = null;
@@ -21,6 +22,7 @@ class SoundService {
   }
 
   public playBeep() {
+    haptics.successScan();
     if (this.isMuted) return;
     try {
       this.initContext();
@@ -46,6 +48,7 @@ class SoundService {
   }
 
   public playSuccess() {
+    haptics.confirm();
     if (this.isMuted) return;
     try {
       this.initContext();
@@ -82,6 +85,7 @@ class SoundService {
   }
 
   public playClick() {
+    haptics.buttonPress();
     if (this.isMuted) return;
     try {
       this.initContext();
@@ -107,6 +111,7 @@ class SoundService {
   }
 
   public playWarning() {
+    haptics.warning();
     if (this.isMuted) return;
     try {
       this.initContext();
@@ -127,6 +132,90 @@ class SoundService {
 
       osc.start();
       osc.stop(this.ctx.currentTime + 0.25);
+    } catch {
+      // Ignore
+    }
+  }
+
+  public playBarcodeBeep() {
+    haptics.successScan();
+    if (this.isMuted) return;
+    try {
+      this.initContext();
+      if (!this.ctx) return;
+
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      // Clean, resonant high-pitched POS scanner beep (2400Hz)
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(2400, now);
+
+      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.07);
+    } catch {
+      // Ignore
+    }
+  }
+
+  public playBatchChime(index: number = 1) {
+    haptics.batchScan();
+    if (this.isMuted) return;
+    try {
+      this.initContext();
+      if (!this.ctx) return;
+
+      const now = this.ctx.currentTime;
+      const baseFreq = 2000 + Math.min(index * 60, 600);
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(baseFreq, now);
+
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.06);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.06);
+    } catch {
+      // Ignore
+    }
+  }
+
+  public playScanError() {
+    haptics.scanError();
+    if (this.isMuted) return;
+    try {
+      this.initContext();
+      if (!this.ctx) return;
+
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(220, now);
+      osc.frequency.setValueAtTime(160, now + 0.1);
+
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.22);
     } catch {
       // Ignore
     }

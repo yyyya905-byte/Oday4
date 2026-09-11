@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Product, Category, DiningType } from '../../types';
 import { soundEffects } from '../../services/audio';
+import { haptics } from '../../services/haptics';
 import {
   Search,
   ScanBarcode,
@@ -41,13 +42,16 @@ import {
   X,
   RotateCcw,
   Folder,
-  Edit3
+  Edit3,
+  Bluetooth
 } from 'lucide-react';
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { CustomerQRScannerModal } from './CustomerQRScannerModal';
 import { PaymentModal } from './PaymentModal';
 import { KitchenTicketModal } from './KitchenTicketModal';
-import { QuickPriceEditModal } from './QuickPriceEditModal';
+import { POSTouchKeypadModal, KeypadMode } from './POSTouchKeypadModal';
+import { BluetoothPrinterModal } from './BluetoothPrinterModal';
+import { bluetoothPrinter, BluetoothPrinterStatus } from '../../services/bluetoothPrinter';
 import { RestaurantPOSHeader } from './RestaurantPOSHeader';
 import { WholesalePOSHeader } from './WholesalePOSHeader';
 import { RetailPOSHeader } from './RetailPOSHeader';
@@ -109,37 +113,95 @@ export const POSView: React.FC = () => {
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isMobileCartOpen, setIsMobileCartOpen] = useState(false);
   const [isKitchenTicketModalOpen, setIsKitchenTicketModalOpen] = useState(false);
-  const [isPriceModalOpen, setIsPriceModalOpen] = useState(false);
-  const [editingPriceTarget, setEditingPriceTarget] = useState<{
-    product: Product;
-    currentPrice: number;
-    isCartItem: boolean;
+  const [isBluetoothModalOpen, setIsBluetoothModalOpen] = useState(false);
+  const [btPrinterStatus, setBtPrinterStatus] = useState<BluetoothPrinterStatus>(bluetoothPrinter.getStatus());
+
+  useEffect(() => {
+    const unsub = bluetoothPrinter.subscribe(status => {
+      setBtPrinterStatus(status);
+    });
+    return unsub;
+  }, []);
+  // Touch Keypad Modal State (Supports Quantity, Price, and Discount)
+  const [touchKeypadConfig, setTouchKeypadConfig] = useState<{
+    isOpen: boolean;
+    mode: KeypadMode;
+    product?: Product | null;
+    currentQuantity?: number;
+    unit?: string;
+    maxStock?: number;
+    unitPrice?: number;
+    currentPrice?: number;
+    costPrice?: number;
+    isCartItem?: boolean;
     cartQuantity?: number;
-  } | null>(null);
+    currentDiscountValue?: number;
+    currentDiscountType?: 'percentage' | 'fixed';
+    subtotal?: number;
+  }>({
+    isOpen: false,
+    mode: 'quantity',
+  });
+
+  const handleOpenQuantityKeypad = (item: typeof cart[0]) => {
+    setTouchKeypadConfig({
+      isOpen: true,
+      mode: 'quantity',
+      product: item.product,
+      currentQuantity: item.quantity,
+      unit: item.wholesaleUnit || item.product.unit || 'قطعة',
+      maxStock: item.product.stock,
+      unitPrice: item.unitPrice,
+    });
+  };
 
   const handleOpenProductPriceEdit = (product: Product) => {
-    setEditingPriceTarget({
+    setTouchKeypadConfig({
+      isOpen: true,
+      mode: 'price',
       product,
       currentPrice: product.price,
-      isCartItem: false
+      costPrice: product.costPrice,
+      isCartItem: false,
     });
-    setIsPriceModalOpen(true);
   };
 
   const handleOpenCartItemPriceEdit = (item: typeof cart[0]) => {
-    setEditingPriceTarget({
+    setTouchKeypadConfig({
+      isOpen: true,
+      mode: 'price',
       product: item.product,
       currentPrice: item.unitPrice,
+      costPrice: item.product.costPrice,
       isCartItem: true,
-      cartQuantity: item.quantity
+      cartQuantity: item.quantity,
     });
-    setIsPriceModalOpen(true);
   };
 
-  const handleSavePriceEdit = (newPrice: number, alsoUpdateCatalog: boolean, alsoAddToCart?: boolean) => {
-    if (!editingPriceTarget) return;
+  const handleOpenDiscountKeypad = () => {
+    setTouchKeypadConfig({
+      isOpen: true,
+      mode: 'discount',
+      currentDiscountValue: orderDiscount.value,
+      currentDiscountType: orderDiscount.type,
+      subtotal,
+    });
+  };
 
-    const { product, isCartItem } = editingPriceTarget;
+  const handleConfirmQuantityKeypad = (newQuantity: number) => {
+    if (!touchKeypadConfig.product) return;
+    if (newQuantity <= 0) {
+      removeFromCart(touchKeypadConfig.product.id);
+      notify('تم تحديث السلة', `تم حذف ${touchKeypadConfig.product.nameAr} من السلة`, 'info');
+    } else {
+      updateCartItemQuantity(touchKeypadConfig.product.id, newQuantity);
+      notify('تم تعديل الكمية', `الكمية الجديدة لـ ${touchKeypadConfig.product.nameAr}: ${newQuantity} ${touchKeypadConfig.unit || ''}`, 'success');
+    }
+  };
+
+  const handleConfirmPriceKeypad = (newPrice: number, alsoUpdateCatalog: boolean, alsoAddToCart?: boolean) => {
+    if (!touchKeypadConfig.product) return;
+    const { product, isCartItem } = touchKeypadConfig;
 
     if (isCartItem) {
       updateCartItemPrice(product.id, newPrice);
@@ -167,6 +229,11 @@ export const POSView: React.FC = () => {
         }, 50);
       }
     }
+  };
+
+  const handleConfirmDiscountKeypad = (val: number, type: 'percentage' | 'fixed') => {
+    setOrderDiscount({ value: val, type });
+    notify('تم تطبيق الخصم', `تم تحديد خصم الفاتورة: ${val}${type === 'percentage' ? '%' : ' ' + settings.currency.symbol}`, 'success');
   };
 
   // Interactive Cashier Change Calculator State
@@ -414,9 +481,38 @@ export const POSView: React.FC = () => {
     setEditingNoteItemKey(null);
   };
 
+  // Haptic-wrapped helpers for ergonomic tactile feedback
+  const handleAddToCartWithHaptics = (product: Product, quantity = 1, isWholesale = false) => {
+    if (product.stock <= 0) {
+      haptics.warning();
+      soundEffects.playWarning();
+    } else {
+      haptics.tap();
+      soundEffects.playClick();
+    }
+    addToCart(product, quantity, isWholesale);
+  };
+
+  const handleUpdateQuantityWithHaptics = (productId: string, newQty: number) => {
+    haptics.tap();
+    updateCartItemQuantity(productId, newQty);
+  };
+
+  const handleRemoveFromCartWithHaptics = (productId: string) => {
+    haptics.delete();
+    removeFromCart(productId);
+  };
+
+  const handleClearCartWithHaptics = () => {
+    haptics.warning();
+    clearCart();
+  };
+
   // Quick add full carton/pack helper for wholesale
   const handleAddCarton = (product: Product, e: React.MouseEvent) => {
     e.stopPropagation();
+    haptics.buttonPress();
+    soundEffects.playClick();
     const multiplier = product.wholesaleUnitMultiplier || 6;
     addToCart(product, multiplier, true);
   };
@@ -424,6 +520,8 @@ export const POSView: React.FC = () => {
   // Quick add multiple packs
   const handleAddMultiplePacks = (product: Product, packsCount: number, e: React.MouseEvent) => {
     e.stopPropagation();
+    haptics.buttonPress();
+    soundEffects.playClick();
     const multiplier = product.wholesaleUnitMultiplier || 6;
     addToCart(product, packsCount * multiplier, true);
   };
@@ -435,96 +533,37 @@ export const POSView: React.FC = () => {
         
         {/* MODE-SPECIALIZED HEADER BANNER */}
         {businessMode === 'restaurant' && (
-          <RestaurantPOSHeader onOpenKitchenTicket={() => setIsKitchenTicketModalOpen(true)} />
+          <RestaurantPOSHeader 
+            onOpenKitchenTicket={() => {
+              haptics.buttonPress();
+              setIsKitchenTicketModalOpen(true);
+            }}
+            onOpenGuestKeypad={() => {
+              haptics.buttonPress();
+              setTouchKeypadConfig({
+                isOpen: true,
+                mode: 'quantity',
+                currentQuantity: guestCount,
+                unit: 'ضيوف'
+              });
+            }}
+          />
         )}
         {businessMode === 'wholesale' && (
           <WholesalePOSHeader />
         )}
         {businessMode === 'retail' && (
           <RetailPOSHeader
-            onScanBarcode={() => setIsBarcodeModalOpen(true)}
-            onScanCustomerQR={() => setIsCustomerQRModalOpen(true)}
+            onScanBarcode={() => {
+              haptics.buttonPress();
+              setIsBarcodeModalOpen(true);
+            }}
+            onScanCustomerQR={() => {
+              haptics.buttonPress();
+              setIsCustomerQRModalOpen(true);
+            }}
           />
         )}
-
-        {/* Top Active Mode Bar & Quick Switcher */}
-        <div className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-3.5 py-2 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xs max-w-full overflow-hidden">
-          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-            <span className="flex h-2.5 w-2.5 relative shrink-0">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                businessMode === 'restaurant' ? 'bg-emerald-400' : businessMode === 'wholesale' ? 'bg-amber-400' : 'bg-blue-400'
-              }`}></span>
-              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
-                businessMode === 'restaurant' ? 'bg-emerald-500' : businessMode === 'wholesale' ? 'bg-amber-500' : 'bg-blue-500'
-              }`}></span>
-            </span>
-            <div className="flex items-center gap-1.5 sm:gap-2 min-w-0 flex-wrap">
-              {businessMode === 'restaurant' && (
-                <span className="flex items-center gap-1.5 text-xs font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-xl border border-emerald-200 dark:border-emerald-800 shrink-0">
-                  <UtensilsCrossed className="w-3.5 h-3.5" />
-                  <span>{language === 'ar' ? 'نمط المطاعم والكافيهات النشط' : 'Restaurant Mode Active'}</span>
-                </span>
-              )}
-              {businessMode === 'wholesale' && (
-                <span className="flex items-center gap-1.5 text-xs font-black text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-2.5 py-1 rounded-xl border border-amber-200 dark:border-amber-800 shrink-0">
-                  <Building2 className="w-3.5 h-3.5" />
-                  <span>{language === 'ar' ? 'نمط تجارة الجملة والتوزيع النشط' : 'Wholesale Mode Active'}</span>
-                </span>
-              )}
-              {businessMode === 'retail' && (
-                <span className="flex items-center gap-1.5 text-xs font-black text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2.5 py-1 rounded-xl border border-blue-200 dark:border-blue-800 shrink-0">
-                  <Store className="w-3.5 h-3.5" />
-                  <span>{language === 'ar' ? 'نمط التجزئة والسوبرماركت النشط' : 'Retail Mode Active'}</span>
-                </span>
-              )}
-              <span className="text-[11px] text-slate-400 hidden sm:inline truncate">
-                {language === 'ar' ? 'تخصيص الواجهة والأسعار تلقائياً' : 'Tailored UI & Pricing'}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Wholesale Trade Mode Toggle if in Wholesale Mode */}
-            {businessMode === 'wholesale' && (
-              <div className="flex items-center bg-slate-100 dark:bg-slate-800 rounded-xl p-0.5 border border-slate-200 dark:border-slate-700">
-                <button
-                  type="button"
-                  onClick={() => setPosTradeMode('wholesale')}
-                  className={`flex items-center gap-1 px-3 py-1.5 min-h-[36px] rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    posTradeMode === 'wholesale'
-                      ? 'bg-amber-500 text-white shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  <Boxes className="w-3.5 h-3.5" />
-                  <span>{language === 'ar' ? 'سعر الجملة' : 'Wholesale'}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPosTradeMode('retail')}
-                  className={`flex items-center gap-1 px-3 py-1.5 min-h-[36px] rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                    posTradeMode === 'retail'
-                      ? 'bg-amber-500 text-white shadow-xs'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  <Tag className="w-3.5 h-3.5" />
-                  <span>{language === 'ar' ? 'سعر المفرق' : 'Retail'}</span>
-                </button>
-              </div>
-            )}
-
-            <button
-              id="btn-switch-business-mode-pos"
-              onClick={() => setIsModeModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-2 min-h-[38px] text-xs font-bold text-slate-700 dark:text-slate-200 hover:bg-amber-50 dark:hover:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 transition-all active:scale-95 cursor-pointer shadow-2xs"
-              title={language === 'ar' ? 'تبديل نمط الكاشير' : 'Switch Mode'}
-            >
-              <SlidersHorizontal className="w-4 h-4 text-amber-500" />
-              <span>{language === 'ar' ? 'تبديل النمط' : 'Switch Mode'}</span>
-            </button>
-          </div>
-        </div>
 
         {/* Live Barcode Scanned Floating Alert */}
         {lastScannedBanner && (
@@ -548,7 +587,10 @@ export const POSView: React.FC = () => {
                 +{lastScannedBanner.count} بالسلة
               </span>
               <button
-                onClick={() => setLastScannedBanner(null)}
+                onClick={() => {
+                  haptics.tap();
+                  setLastScannedBanner(null);
+                }}
                 className="w-8 h-8 min-w-[32px] min-h-[32px] flex items-center justify-center text-emerald-700 dark:text-emerald-300 hover:text-emerald-900 rounded-lg hover:bg-emerald-200/50 cursor-pointer transition-colors"
                 aria-label="إغلاق التنبيه"
               >
@@ -558,9 +600,9 @@ export const POSView: React.FC = () => {
           </div>
         )}
 
-        {/* Search & Direct Controls Bar */}
-        <div className="flex items-center gap-1.5 sm:gap-2 max-w-full">
-          {/* Search Input with Auto-Focus and Hardware Barcode Readiness */}
+        {/* ORGANIZED POS WORKSTATION COMMAND BAR: Search + Unified Action Cluster */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center gap-2 max-w-full">
+          {/* 1. Spacious High-Contrast Search Input with Auto-Focus & Barcode Readiness */}
           <div className="relative flex-1 min-w-0">
             <input
               ref={searchInputRef}
@@ -575,77 +617,225 @@ export const POSView: React.FC = () => {
                 ? (language === 'ar' ? 'بحث عن بضاعة، كود أو باركود...' : 'Search item, SKU or barcode...')
                 : (language === 'ar' ? 'امسح الباركود أو ابحث عن منتج...' : 'Scan barcode or search...')
               }
-              className="w-full ps-9.5 pe-9 py-2.5 bg-white dark:bg-slate-900 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs focus:outline-none focus:border-amber-500 transition-all min-h-[46px]"
+              className="w-full ps-10 pe-20 py-2.5 bg-white dark:bg-slate-900 text-xs sm:text-sm font-semibold text-slate-900 dark:text-white rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/20 transition-all min-h-[46px]"
             />
-            <Search className="w-4 h-4 text-slate-400 absolute start-3 top-3.5 pointer-events-none" />
-            {searchQuery && (
-              <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="w-8 h-8 min-w-[32px] min-h-[32px] flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 absolute end-1.5 top-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
-                aria-label="مسح البحث"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
+            <Search className="w-4 h-4 text-slate-400 absolute start-3.5 top-3.5 pointer-events-none" />
+            
+            {/* Search actions: count badge, shortcut, or clear */}
+            <div className="absolute end-2 top-2 flex items-center gap-1.5">
+              {searchQuery ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    haptics.tap();
+                    setSearchQuery('');
+                  }}
+                  className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer transition-colors"
+                  aria-label="مسح البحث"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              ) : (
+                <span className="hidden sm:inline-flex items-center text-[10px] font-mono font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/80 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-700/60 select-none">
+                  /
+                </span>
+              )}
+              <span className="text-[11px] font-bold text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-800 font-mono hidden sm:inline-block">
+                {filteredProducts.length}
+              </span>
+            </div>
           </div>
 
-          {/* Barcode Scanner Button (Camera / Modal) */}
-          <button
-            id="btn-scan-barcode-modal"
-            onClick={() => setIsBarcodeModalOpen(true)}
-            className="flex items-center justify-center gap-1.5 px-3 sm:px-3.5 min-h-[46px] bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs active:scale-95 transition-all shrink-0 cursor-pointer"
-            title={language === 'ar' ? 'قارئ الباركود والكاميرا' : 'Barcode & Camera Scanner'}
-          >
-            <ScanBarcode className="w-4 h-4 text-amber-500" />
-            <span className="hidden md:inline">{t('scanBarcode')}</span>
-            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="القارئ نشط تلقائياً" />
-          </button>
+          {/* Wholesale Mode Toggle (Wholesale Only) */}
+          {businessMode === 'wholesale' && (
+            <div className="flex items-center bg-white dark:bg-slate-900 rounded-2xl p-1 border border-slate-200 dark:border-slate-800 shadow-xs shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  haptics.selection();
+                  setPosTradeMode('wholesale');
+                }}
+                className={`flex items-center gap-1 px-3 py-1.5 min-h-[38px] rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  posTradeMode === 'wholesale'
+                    ? 'bg-amber-500 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Boxes className="w-3.5 h-3.5" />
+                <span>{language === 'ar' ? 'سعر الجملة' : 'Wholesale'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  haptics.selection();
+                  setPosTradeMode('retail');
+                }}
+                className={`flex items-center gap-1 px-3 py-1.5 min-h-[38px] rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  posTradeMode === 'retail'
+                    ? 'bg-amber-500 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Tag className="w-3.5 h-3.5" />
+                <span>{language === 'ar' ? 'سعر المفرق' : 'Retail'}</span>
+              </button>
+            </div>
+          )}
 
-          {/* Customer QR Scanner Button */}
-          <button
-            id="btn-scan-customer-qr-modal"
-            onClick={() => setIsCustomerQRModalOpen(true)}
-            className={`flex items-center justify-center gap-1.5 px-3 sm:px-3.5 min-h-[46px] text-xs font-bold rounded-2xl border shadow-xs active:scale-95 transition-all shrink-0 cursor-pointer ${
-              selectedCustomer
-                ? 'bg-amber-500 text-white border-amber-500 shadow-amber-500/20'
-                : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800'
-            }`}
-            title={t('scanCustomerQR')}
-          >
-            <QrCode className="w-4 h-4" />
-            <span className="hidden md:inline">
-              {selectedCustomer ? selectedCustomer.name : t('customer')}
-            </span>
-          </button>
+          {/* 2. Unified Cashier Command Cluster (محطة أدوات الكاشير المنظمة) */}
+          <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-1 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs shrink-0 overflow-x-auto no-scrollbar">
+            {/* Touch Numpad Quick Keypad Button */}
+            <button
+              id="btn-pos-touch-keypad"
+              type="button"
+              onClick={() => {
+                haptics.buttonPress();
+                if (cart.length > 0) {
+                  handleOpenQuantityKeypad(cart[cart.length - 1]);
+                } else if (filteredProducts.length > 0) {
+                  handleOpenProductPriceEdit(filteredProducts[0]);
+                } else {
+                  setTouchKeypadConfig({
+                    isOpen: true,
+                    mode: 'quantity',
+                    currentQuantity: 1,
+                    unit: 'قطعة'
+                  });
+                }
+              }}
+              data-longpress-title={language === 'ar' ? 'لوحة المفاتيح الرقمية اللمسية' : 'Touch Numeric Keypad'}
+              data-longpress-desc={language === 'ar' ? 'إدخال سريع للكميات والأسعار والخصومات بأزرار لمسية كبيرة مريحة للعين والأصابع.' : 'Fast numeric entry for quantities and prices with large touch buttons.'}
+              className="flex items-center justify-center gap-1 px-3 min-h-[40px] bg-blue-50/90 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 text-xs font-bold rounded-xl border border-blue-200 dark:border-blue-800/60 shadow-2xs active:scale-95 transition-all shrink-0 cursor-pointer"
+              title={language === 'ar' ? 'لوحة مفاتيح رقمية لمسية للكميات والأسعار' : 'Touch Numeric Keypad'}
+            >
+              <Calculator className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <span className="hidden sm:inline">{language === 'ar' ? 'أرقام' : 'Numpad'}</span>
+            </button>
 
-          {/* Quick Invoice Return by Barcode Button */}
-          <button
-            id="btn-pos-invoice-return"
-            onClick={() => setActiveTab('returns')}
-            className="flex items-center justify-center gap-1.5 px-3 sm:px-3.5 min-h-[46px] bg-rose-50/80 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 text-xs font-bold rounded-2xl border border-rose-200 dark:border-rose-800/60 shadow-xs active:scale-95 transition-all shrink-0 cursor-pointer"
-            title="إرجاع بضاعة عبر مسح باركود الفاتورة الأصلية"
-          >
-            <RotateCcw className="w-4 h-4 text-rose-500" />
-            <span className="hidden xl:inline">إرجاع فاتورة</span>
-          </button>
+            {/* Barcode Scanner Button (Camera / Modal) */}
+            <button
+              id="btn-scan-barcode-modal"
+              type="button"
+              onClick={() => {
+                haptics.buttonPress();
+                setIsBarcodeModalOpen(true);
+              }}
+              data-longpress-title={language === 'ar' ? 'قارئ الباركود' : 'Barcode Scanner'}
+              data-longpress-desc={language === 'ar' ? 'مسح الباركود باستخدام كاميرا الهاتف أو أجهزة الليزر USB لإضافة الأصناف للسلة فوراً.' : 'Scan barcodes with camera or USB scanner to add items to cart.'}
+              className="flex items-center justify-center gap-1 px-3 min-h-[40px] bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-750 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs active:scale-95 transition-all shrink-0 cursor-pointer"
+              title={language === 'ar' ? 'قارئ الباركود والكاميرا' : 'Barcode & Camera Scanner'}
+            >
+              <ScanBarcode className="w-4 h-4 text-amber-500" />
+              <span className="hidden md:inline">{t('scanBarcode')}</span>
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" title="القارئ نشط تلقائياً" />
+            </button>
 
-          {/* Mobile Cart Toggle Button */}
-          <button
-            id="btn-mobile-cart-top"
-            onClick={() => setIsMobileCartOpen(true)}
-            className={`lg:hidden flex items-center justify-center gap-1.5 px-3.5 min-h-[46px] text-white font-bold text-xs rounded-2xl shadow-md shrink-0 active:scale-95 transition-all cursor-pointer ${
-              businessMode === 'restaurant'
-                ? 'bg-emerald-600 shadow-emerald-600/20'
-                : businessMode === 'wholesale'
-                ? 'bg-amber-600 shadow-amber-600/20'
-                : 'bg-blue-600 shadow-blue-600/20'
-            }`}
-            aria-label="عرض سلة التسوق"
-          >
-            <ShoppingBag className="w-4 h-4" />
-            <span className="font-mono">{cartItemsCount}</span>
-          </button>
+            {/* Customer QR Scanner Button */}
+            <button
+              id="btn-scan-customer-qr-modal"
+              type="button"
+              onClick={() => {
+                haptics.buttonPress();
+                setIsCustomerQRModalOpen(true);
+              }}
+              data-longpress-title={language === 'ar' ? 'مسح كود العميل وبطاقة الولاء' : 'Customer Loyalty Card'}
+              data-longpress-desc={language === 'ar' ? 'التعرف على العميل، كسب نقاط المكافآت، واحتساب رصيد المشتريات.' : 'Identify member customer, award loyalty points, and track balance.'}
+              className={`flex items-center justify-center gap-1 px-3 min-h-[40px] text-xs font-bold rounded-xl border shadow-2xs active:scale-95 transition-all shrink-0 cursor-pointer ${
+                selectedCustomer
+                  ? 'bg-amber-500 text-white border-amber-500 shadow-amber-500/20'
+                  : 'bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+              }`}
+              title={t('scanCustomerQR')}
+            >
+              <QrCode className="w-4 h-4" />
+              <span className="hidden md:inline">
+                {selectedCustomer ? selectedCustomer.name.slice(0, 10) : t('customer')}
+              </span>
+            </button>
+
+            {/* Bluetooth ESC/POS Thermal Printer Button */}
+            <button
+              id="btn-pos-bluetooth-printer"
+              type="button"
+              onClick={() => {
+                haptics.buttonPress();
+                setIsBluetoothModalOpen(true);
+              }}
+              data-longpress-title="طابعة إيصالات البلوتوث (ESC/POS)"
+              data-longpress-desc="ربط وإدارة طابعة الفواتير الحرارية اللاسلكية، فحص الاتصال، وطباعة إيصالات مباشرة."
+              className={`flex items-center justify-center gap-1 px-3 min-h-[40px] text-xs font-bold rounded-xl border shadow-2xs active:scale-95 transition-all shrink-0 cursor-pointer ${
+                btPrinterStatus.isConnected
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/20'
+                  : 'bg-slate-50 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+              }`}
+              title="طابعة إيصالات حرارية عبر البلوتوث"
+            >
+              <Bluetooth className={`w-4 h-4 ${btPrinterStatus.isConnected ? 'text-white' : 'text-blue-500'}`} />
+              <span className="hidden xl:inline">
+                {btPrinterStatus.isConnected
+                  ? (btPrinterStatus.deviceName?.slice(0, 10) || 'طابعة متصلة')
+                  : 'طابعة'}
+              </span>
+              {btPrinterStatus.isConnected && (
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              )}
+            </button>
+
+            {/* Quick Invoice Return by Barcode Button */}
+            <button
+              id="btn-pos-invoice-return"
+              type="button"
+              onClick={() => {
+                haptics.buttonPress();
+                setActiveTab('returns');
+              }}
+              data-longpress-title={language === 'ar' ? 'إرجاع فاتورة بمسح الباركود' : 'Return Invoice'}
+              data-longpress-desc={language === 'ar' ? 'الانتقال المباشر لشاشة المرتجعات لإرجاع أصناف الفاتورة واسترداد المبالغ للعميل.' : 'Jump directly to sales returns to refund items by invoice barcode.'}
+              className="flex items-center justify-center gap-1 px-3 min-h-[40px] bg-rose-50/80 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 text-xs font-bold rounded-xl border border-rose-200 dark:border-rose-800/60 shadow-2xs active:scale-95 transition-all shrink-0 cursor-pointer"
+              title="إرجاع بضاعة عبر مسح باركود الفاتورة الأصلية"
+            >
+              <RotateCcw className="w-4 h-4 text-rose-500" />
+              <span className="hidden xl:inline">إرجاع</span>
+            </button>
+
+            {/* Switch Mode Button */}
+            <button
+              id="btn-switch-business-mode-pos"
+              type="button"
+              onClick={() => {
+                haptics.buttonPress();
+                setIsModeModalOpen(true);
+              }}
+              className="flex items-center gap-1 px-3 min-h-[40px] text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-slate-750 rounded-xl border border-slate-200 dark:border-slate-700 transition-all active:scale-95 cursor-pointer shadow-2xs shrink-0"
+              title={language === 'ar' ? 'تبديل نمط الكاشير (مطاعم / جملة / تجزئة)' : 'Switch POS Mode'}
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-amber-500" />
+              <span className="hidden lg:inline">{language === 'ar' ? 'النمط' : 'Mode'}</span>
+            </button>
+
+            {/* Mobile Cart Toggle Button */}
+            <button
+              id="btn-mobile-cart-top"
+              type="button"
+              onClick={() => {
+                haptics.buttonPress();
+                setIsMobileCartOpen(true);
+              }}
+              data-longpress-title={language === 'ar' ? 'سلة الفاتورة الحالية' : 'Current Cart'}
+              data-longpress-desc={language === 'ar' ? 'فتح درج السلة لمشاهدة الأصناف وتعديل الكميات وإتمام عملية البيع.' : 'Open mobile cart drawer to review items and complete payment.'}
+              className={`lg:hidden flex items-center justify-center gap-1.5 px-3.5 min-h-[40px] text-white font-bold text-xs rounded-xl shadow-md shrink-0 active:scale-95 transition-all cursor-pointer ${
+                businessMode === 'restaurant'
+                  ? 'bg-emerald-600 shadow-emerald-600/20'
+                  : businessMode === 'wholesale'
+                  ? 'bg-amber-600 shadow-amber-600/20'
+                  : 'bg-blue-600 shadow-blue-600/20'
+              }`}
+              aria-label="عرض سلة التسوق"
+            >
+              <ShoppingBag className="w-4 h-4" />
+              <span className="font-mono">{cartItemsCount}</span>
+            </button>
+          </div>
         </div>
 
         {/* Categories Horizontal Scrolling Tabs */}
@@ -655,6 +845,8 @@ export const POSView: React.FC = () => {
               setSelectedCategory('cat_all');
               setShowFavoritesOnly(false);
             }}
+            data-longpress-title={language === 'ar' ? 'جميع التصنيفات' : 'All Categories'}
+            data-longpress-desc={language === 'ar' ? 'عرض جميع المنتجات المتاحة بنظام الكاشير دون أي تصفية تصنيف.' : 'Show all products without category filtering.'}
             className={`flex items-center gap-1.5 px-4 py-2 min-h-[42px] rounded-xl text-xs font-bold whitespace-nowrap transition-all active:scale-95 cursor-pointer ${
               selectedCategory === 'cat_all' && !showFavoritesOnly
                 ? businessMode === 'restaurant'
@@ -675,6 +867,8 @@ export const POSView: React.FC = () => {
               setShowFavoritesOnly(!showFavoritesOnly);
               setSelectedCategory('cat_all');
             }}
+            data-longpress-title={businessMode === 'restaurant' ? (language === 'ar' ? 'الأكثر طلباً بالمطعم' : 'Popular Dishes') : (language === 'ar' ? 'الأصناف المميزة بنجمة' : 'Favorite Products')}
+            data-longpress-desc={language === 'ar' ? 'تصفية سريعة لعرض المنتجات الأكثر مبيعاً أو المحددة كمفضلة للوصول الفوري.' : 'Filter to quickly access most popular or starred items.'}
             className={`flex items-center gap-1.5 px-4 py-2 min-h-[42px] rounded-xl text-xs font-bold whitespace-nowrap transition-all active:scale-95 cursor-pointer ${
               showFavoritesOnly
                 ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20'
@@ -1111,6 +1305,8 @@ export const POSView: React.FC = () => {
             <button
               type="button"
               onClick={() => setActiveTab('ai')}
+              data-longpress-title={language === 'ar' ? 'المستشار الذكي (Gemini AI)' : 'AI Smart Advisor'}
+              data-longpress-desc={language === 'ar' ? 'اقتراحات ذكية للبيع المتبادل بناءً على محتويات السلة الحالية.' : 'Smart cross-selling suggestions based on cart items.'}
               className="p-2 min-h-[36px] rounded-xl bg-gradient-to-r from-amber-500/10 to-indigo-500/10 hover:from-amber-500/20 hover:to-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 transition-all flex items-center gap-1 text-xs font-bold cursor-pointer active:scale-95"
               title={language === 'ar' ? 'المستشار الذكي (Gemini AI)' : 'AI Smart Advisor'}
             >
@@ -1120,7 +1316,23 @@ export const POSView: React.FC = () => {
 
             {cart.length > 0 && (
               <button
+                type="button"
+                onClick={() => handleOpenQuantityKeypad(cart[cart.length - 1])}
+                data-longpress-title={language === 'ar' ? 'لوحة الأرقام اللمسية' : 'Touch Keypad'}
+                data-longpress-desc={language === 'ar' ? 'تعديل كمية أو سعر آخر صنف في السلة بلوحة أرقام لمسية كبيرة.' : 'Edit quantity or price with large touch keypad.'}
+                className="p-2 min-h-[36px] rounded-xl bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/60 transition-all flex items-center gap-1 text-xs font-bold cursor-pointer active:scale-95"
+                title={language === 'ar' ? 'لوحة أرقام لمسية' : 'Touch Keypad'}
+              >
+                <Calculator className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span className="hidden xl:inline">{language === 'ar' ? 'لوحة لمسية' : 'Keypad'}</span>
+              </button>
+            )}
+
+            {cart.length > 0 && (
+              <button
                 onClick={clearCart}
+                data-longpress-title={language === 'ar' ? 'تفريغ السلة' : 'Clear Cart'}
+                data-longpress-desc={language === 'ar' ? 'حذف جميع الأصناف الموجودة في السلة والبدء بفاتورة فارغة جديدة.' : 'Remove all items from current cart.'}
                 className="text-xs text-rose-500 hover:text-rose-700 font-bold px-2.5 py-1.5 min-h-[36px] rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors flex items-center gap-1 cursor-pointer active:scale-95"
                 title={t('clearCart')}
               >
@@ -1267,9 +1479,15 @@ export const POSView: React.FC = () => {
                       <Minus className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                     </button>
 
-                    <span className="w-8 sm:w-7 text-center text-xs font-black font-mono text-slate-900 dark:text-white">
-                      {item.quantity}
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleOpenQuantityKeypad(item)}
+                      className="min-w-[36px] px-1.5 py-1 min-h-[32px] text-center text-xs font-black font-mono text-slate-900 dark:text-white bg-slate-50 hover:bg-blue-50 dark:bg-slate-800 dark:hover:bg-blue-950/60 hover:text-blue-600 dark:hover:text-blue-400 rounded-lg border border-transparent hover:border-blue-400 transition-all cursor-pointer active:scale-95 shadow-2xs flex items-center justify-center gap-0.5 group/qty"
+                      title="انقر لتعديل الكمية باللوحة الرقمية اللمسية"
+                    >
+                      <span>{item.quantity}</span>
+                      <Edit3 className="w-2.5 h-2.5 text-slate-400 group-hover/qty:text-blue-500 opacity-60 group-hover/qty:opacity-100 shrink-0" />
+                    </button>
 
                     <button
                       type="button"
@@ -1410,14 +1628,15 @@ export const POSView: React.FC = () => {
               <span>{t('orderDiscount')}:</span>
             </span>
             <div className="flex items-center gap-1.5">
-              <input
-                type="number"
-                min={0}
-                placeholder="0"
-                value={orderDiscount.value || ''}
-                onChange={e => setOrderDiscount({ ...orderDiscount, value: Number(e.target.value) })}
-                className="w-16 text-center text-xs font-bold py-1.5 min-h-[34px] bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-xl border border-slate-200 dark:border-slate-700"
-              />
+              <button
+                type="button"
+                onClick={handleOpenDiscountKeypad}
+                className="px-2.5 py-1 min-h-[34px] bg-white dark:bg-slate-900 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-slate-900 dark:text-white rounded-xl border border-slate-200 dark:border-slate-700 hover:border-amber-400 text-xs font-bold font-mono flex items-center gap-1.5 cursor-pointer shadow-2xs group transition-colors"
+                title="فتح لوحة مفاتيح الخصم باللمس"
+              >
+                <span>{orderDiscount.value || 0}</span>
+                <Calculator className="w-3 h-3 text-slate-400 group-hover:text-amber-500" />
+              </button>
               <button
                 onClick={() => setOrderDiscount({ ...orderDiscount, type: orderDiscount.type === 'percentage' ? 'fixed' : 'percentage' })}
                 className="px-2.5 py-1.5 min-h-[34px] text-xs font-bold rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200 active:scale-95 cursor-pointer font-mono"
@@ -1478,7 +1697,9 @@ export const POSView: React.FC = () => {
                 id="btn-print-kot-kitchen"
                 disabled={cart.length === 0}
                 onClick={() => setIsKitchenTicketModalOpen(true)}
-                className={`py-3 px-3.5 rounded-2xl font-extrabold text-xs flex items-center justify-center gap-1.5 border transition-all active:scale-95 ${
+                data-longpress-title={language === 'ar' ? 'إرسال للمطبخ (KOT)' : 'Send to Kitchen'}
+                data-longpress-desc={language === 'ar' ? 'طباعة أو إرسال تذكرة الطلب والملاحظات الخاصة بطاهي المطبخ فوراً.' : 'Print or dispatch kitchen order ticket to preparation line.'}
+                className={`py-3 px-3.5 rounded-2xl font-extrabold text-xs flex items-center justify-center gap-1.5 border transition-all active:scale-95 cursor-pointer ${
                   cart.length === 0
                     ? 'bg-slate-100 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 cursor-not-allowed'
                     : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700 hover:bg-emerald-100 shadow-xs'
@@ -1496,6 +1717,8 @@ export const POSView: React.FC = () => {
               id="btn-pos-pay-now"
               disabled={cart.length === 0}
               onClick={() => setIsPaymentModalOpen(true)}
+              data-longpress-title={language === 'ar' ? 'محاسبة ودفع الفاتورة' : 'Pay & Complete'}
+              data-longpress-desc={language === 'ar' ? 'فتح نافذة الدفع، اختيار الدفع كاش أو شبكة أو آجل، وطباعة الفاتورة.' : 'Proceed to payment dialog, calculate change and issue invoice.'}
               className={`flex-1 py-3.5 min-h-[48px] rounded-2xl text-white font-extrabold text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg transition-all active:scale-98 cursor-pointer ${
                 cart.length === 0
                   ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed shadow-none'
@@ -1536,6 +1759,8 @@ export const POSView: React.FC = () => {
               type="button"
               id="mobile-dock-barcode-btn"
               onClick={() => setIsBarcodeModalOpen(true)}
+              data-longpress-title={language === 'ar' ? 'مسح باركود بالكاميرا' : 'Barcode Camera'}
+              data-longpress-desc={language === 'ar' ? 'تشغيل كاميرا الهاتف لمسح باركود المنتج وإضافته مباشرة إلى الفاتورة.' : 'Open camera to scan barcodes directly.'}
               className="w-11 h-11 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center shrink-0 active:scale-90 transition-all shadow-xs cursor-pointer"
               title={language === 'ar' ? 'مسح باركود بالكاميرا' : 'Camera Barcode Scanner'}
               aria-label="مسح باركود بالكاميرا"
@@ -1547,6 +1772,8 @@ export const POSView: React.FC = () => {
             <button
               type="button"
               onClick={() => setActiveTab('returns')}
+              data-longpress-title={language === 'ar' ? 'إرجاع واسترجاع فاتورة' : 'Sales Return'}
+              data-longpress-desc={language === 'ar' ? 'فتح شاشة إرجاع الفواتير بمسح الباركود أو إدخال رقم الفاتورة.' : 'Jump to return items and refund money.'}
               className="w-11 h-11 rounded-xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-300 flex items-center justify-center shrink-0 active:scale-90 transition-all shadow-xs cursor-pointer border border-rose-200/60 dark:border-rose-800/40"
               title="إرجاع بضاعة بمسح الباركود"
               aria-label="إرجاع بضاعة بمسح الباركود"
@@ -1559,6 +1786,8 @@ export const POSView: React.FC = () => {
               type="button"
               id="mobile-dock-cart-btn"
               onClick={() => setIsMobileCartOpen(true)}
+              data-longpress-title={language === 'ar' ? 'درج سلة المشتريات' : 'Cart Drawer'}
+              data-longpress-desc={language === 'ar' ? 'فتح درج السلة لمراجعة الأصناف وحذفها أو تعديل كمياتها وأسعارها.' : 'Open cart drawer to modify quantities and details.'}
               className="flex-1 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-95 transition-all text-start min-w-0 cursor-pointer"
               aria-label="عرض سلة التسوق"
             >
@@ -1590,6 +1819,8 @@ export const POSView: React.FC = () => {
               id="mobile-dock-pay-btn"
               disabled={cart.length === 0}
               onClick={() => setIsPaymentModalOpen(true)}
+              data-longpress-title={language === 'ar' ? 'محاسبة ودفع سريع' : 'Instant Checkout'}
+              data-longpress-desc={language === 'ar' ? 'فتح شاشة الدفع واختيار طريقة المحاسبة نقد أو آجل وحساب الباقي.' : 'Open checkout modal to choose payment method and finish sale.'}
               className={`h-11 px-4 rounded-xl font-extrabold text-xs sm:text-sm text-white flex items-center justify-center gap-1.5 shadow-md active:scale-95 transition-all shrink-0 cursor-pointer ${
                 cart.length === 0
                   ? 'bg-slate-300 dark:bg-slate-700 text-slate-500 cursor-not-allowed shadow-none'
@@ -1637,17 +1868,30 @@ export const POSView: React.FC = () => {
         />
       )}
 
-      <QuickPriceEditModal
-        isOpen={isPriceModalOpen}
-        onClose={() => {
-          setIsPriceModalOpen(false);
-          setEditingPriceTarget(null);
-        }}
-        product={editingPriceTarget?.product || null}
-        currentPrice={editingPriceTarget?.currentPrice || 0}
-        isCartItem={editingPriceTarget?.isCartItem}
-        cartQuantity={editingPriceTarget?.cartQuantity}
-        onSave={handleSavePriceEdit}
+      <POSTouchKeypadModal
+        isOpen={touchKeypadConfig.isOpen}
+        onClose={() => setTouchKeypadConfig(prev => ({ ...prev, isOpen: false }))}
+        mode={touchKeypadConfig.mode}
+        product={touchKeypadConfig.product || null}
+        currentQuantity={touchKeypadConfig.currentQuantity}
+        unit={touchKeypadConfig.unit}
+        maxStock={touchKeypadConfig.maxStock}
+        unitPrice={touchKeypadConfig.unitPrice}
+        onConfirmQuantity={handleConfirmQuantityKeypad}
+        currentPrice={touchKeypadConfig.currentPrice}
+        costPrice={touchKeypadConfig.costPrice}
+        isCartItem={touchKeypadConfig.isCartItem}
+        cartQuantity={touchKeypadConfig.cartQuantity}
+        onConfirmPrice={handleConfirmPriceKeypad}
+        currentDiscountValue={touchKeypadConfig.currentDiscountValue}
+        currentDiscountType={touchKeypadConfig.currentDiscountType}
+        subtotal={touchKeypadConfig.subtotal}
+        onConfirmDiscount={handleConfirmDiscountKeypad}
+      />
+
+      <BluetoothPrinterModal
+        isOpen={isBluetoothModalOpen}
+        onClose={() => setIsBluetoothModalOpen(false)}
       />
     </div>
   );

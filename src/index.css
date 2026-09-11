@@ -25,7 +25,7 @@
     transition: background-color 0.25s ease, color 0.25s ease;
   }
 
-  /* Light mode calm card, table, and border harmony */
+  /* Harmonious, calm, and serene light mode palette */
   :root:not(.dark) {
     color-scheme: light;
   }
@@ -46,8 +46,43 @@
     color: #334155;
   }
 
+  :root:not(.dark) .text-slate-600 {
+    color: #475569;
+  }
+
   :root:not(.dark) .border-slate-200 {
     border-color: #e2e8f0;
+  }
+
+  :root:not(.dark) .border-slate-100 {
+    border-color: #f1f5f9;
+  }
+
+  /* Soft, non-glare card shadows in light mode */
+  :root:not(.dark) .shadow-xs,
+  :root:not(.dark) .shadow-2xs {
+    box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.03);
+  }
+
+  :root:not(.dark) .shadow-sm {
+    box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
+  }
+
+  :root:not(.dark) .shadow-md {
+    box-shadow: 0 4px 8px -1px rgba(15, 23, 42, 0.05), 0 2px 4px -2px rgba(15, 23, 42, 0.03);
+  }
+
+  /* Soft harmonious focus state in light mode */
+  :root:not(.dark) input:focus,
+  :root:not(.dark) select:focus,
+  :root:not(.dark) textarea:focus {
+    border-color: #f59e0b;
+    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12);
+  }
+
+  /* Calm alternating table row highlights */
+  :root:not(.dark) table tbody tr:hover {
+    background-color: #f8fafc;
   }
 
   .dark body {

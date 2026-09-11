@@ -20,6 +20,7 @@ import {
   Plus
 } from 'lucide-react';
 import { PrintableReceiptModal } from './PrintableReceiptModal';
+import { DraggableModalWrapper } from '../common/DraggableModalWrapper';
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -145,119 +146,113 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
 
   return (
     <>
-      {isOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-4">
-            {/* Header */}
-            <div className="p-4 bg-slate-50 dark:bg-slate-800/70 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-500/10 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold">
-                  <Calculator className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-                    {t('paymentTitle')} (إتمام الدفع والفاتورة)
-                  </h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    تحديد طريقة الدفع وحساب المبلغ المستلم والباقي
-                  </p>
-                </div>
+      <DraggableModalWrapper
+        isOpen={isOpen}
+        onClose={onClose}
+        title={<span>{t('paymentTitle')} <span className="text-xs text-slate-400 font-normal">(إتمام الفاتورة)</span></span>}
+        subtitle="حدد طريقة الدفع والمبلغ المستلم — اسحب الشريط العلوي لتحريك النافذة"
+        icon={<Calculator className="w-5 h-5" />}
+        maxWidth="max-w-lg"
+      >
+        <div className="p-4 sm:p-5 space-y-4">
+          {/* Grand Total Hero Display */}
+          <div className="p-4 bg-gradient-to-tr from-amber-500/15 via-amber-500/10 to-amber-600/5 dark:from-amber-950/40 dark:to-slate-800/40 border border-amber-500/30 rounded-2xl text-center shadow-xs">
+            <span className="text-xs font-bold text-amber-700 dark:text-amber-300 block mb-1">
+              {t('amountDue')} (المبلغ المطلوب)
+            </span>
+            <span className="text-3xl sm:text-4xl font-black text-slate-950 dark:text-white tracking-tight font-mono">
+              {formatCurrency(totalAmount)}
+            </span>
+            {selectedCustomer && (
+              <div className="flex items-center justify-center gap-2 mt-2 text-xs font-bold text-slate-700 dark:text-slate-300 bg-white/70 dark:bg-slate-800/70 py-1 px-3 rounded-xl border border-amber-200 dark:border-slate-700 w-fit mx-auto">
+                <UserCheck className="w-3.5 h-3.5 text-amber-600" />
+                <span>العميل: {selectedCustomer.name}</span>
+                {selectedCustomer.currentDebt ? (
+                  <span className="text-[10px] text-rose-600 font-mono">
+                    (دين سابق: {formatCurrency(selectedCustomer.currentDebt)})
+                  </span>
+                ) : null}
               </div>
+            )}
+          </div>
+
+          {/* Payment Methods Selector (4 Options including Ajal / Credit) */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                {t('paymentMethod')} (طريقة السداد):
+              </label>
+              <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                💡 اضغط مطولاً على أي خيار لمعرفة تفاصيله
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {/* 1. Cash */}
               <button
-                onClick={onClose}
-                className="w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-90 cursor-pointer"
-                aria-label="إغلاق"
+                type="button"
+                onClick={() => setPaymentMethod('cash')}
+                data-longpress-title="الدفع نقداً (Cash)"
+                data-longpress-desc="استلام المبلغ ورقياً من العميل كاش، مع حساب الفكة والمبلغ المتبقي للزبون بدقة وتسجيله في صندوق الكاشير."
+                className={`flex flex-col items-center justify-center p-3.5 min-h-[64px] rounded-2xl border transition-all cursor-pointer active:scale-95 ${
+                  paymentMethod === 'cash'
+                    ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20 font-bold scale-[1.02]'
+                    : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                }`}
               >
-                <X className="w-5 h-5" />
+                <Banknote className="w-5 h-5 mb-1" />
+                <span className="text-xs font-bold">{t('cash')}</span>
+              </button>
+
+              {/* 2. Card */}
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('card')}
+                data-longpress-title="الدفع بالبطاقة الإلكترونية (Card)"
+                data-longpress-desc="الدفع عبر نقاط البيع المصرفية وبطاقات الدفع الإلكتروني، لا يتطلب إرجاع فكة نقدية."
+                className={`flex flex-col items-center justify-center p-3.5 min-h-[64px] rounded-2xl border transition-all cursor-pointer active:scale-95 ${
+                  paymentMethod === 'card'
+                    ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20 font-bold scale-[1.02]'
+                    : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <CreditCard className="w-5 h-5 mb-1" />
+                <span className="text-xs font-bold">{t('card')}</span>
+              </button>
+
+              {/* 3. Transfer */}
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('transfer')}
+                data-longpress-title="الحوالة أو الدفع الرقمي (Transfer)"
+                data-longpress-desc="الدفع عبر التحويل البنكي أو المحافظ الإلكترونية المعتمدة مثل الهرم، الفؤاد، سيريتل كاش أو شام كاش."
+                className={`flex flex-col items-center justify-center p-3.5 min-h-[64px] rounded-2xl border transition-all cursor-pointer active:scale-95 ${
+                  paymentMethod === 'transfer'
+                    ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20 font-bold scale-[1.02]'
+                    : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <Send className="w-5 h-5 mb-1" />
+                <span className="text-xs font-bold">{t('transfer')}</span>
+              </button>
+
+              {/* 4. Ajal / Credit (آجل على الحساب) */}
+              <button
+                type="button"
+                id="btn-payment-method-credit"
+                onClick={() => setPaymentMethod('credit')}
+                data-longpress-title="البيع الآجل والذمم (Credit / Ajal)"
+                data-longpress-desc="تسجيل الفاتورة على حساب العميل في سجل الديون مع إمكانية دفع جزء نقداً وتسجيل الباقي ديناً بذمة العميل."
+                className={`flex flex-col items-center justify-center p-3.5 min-h-[64px] rounded-2xl border transition-all cursor-pointer active:scale-95 ${
+                  paymentMethod === 'credit'
+                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/20 font-bold scale-[1.02]'
+                    : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                }`}
+              >
+                <FileText className="w-5 h-5 mb-1 text-indigo-400" />
+                <span className="text-xs font-bold">آجل (ذمم)</span>
               </button>
             </div>
-
-            <div className="p-5 sm:p-6 space-y-4 max-h-[80vh] overflow-y-auto">
-              {/* Grand Total Hero Display */}
-              <div className="p-4 bg-gradient-to-tr from-amber-500/15 via-amber-500/10 to-amber-600/5 dark:from-amber-950/40 dark:to-slate-800/40 border border-amber-500/30 rounded-2xl text-center shadow-xs">
-                <span className="text-xs font-bold text-amber-700 dark:text-amber-300 block mb-1">
-                  {t('amountDue')} (المبلغ المطلوب)
-                </span>
-                <span className="text-3xl sm:text-4xl font-black text-slate-950 dark:text-white tracking-tight font-mono">
-                  {formatCurrency(totalAmount)}
-                </span>
-                {selectedCustomer && (
-                  <div className="flex items-center justify-center gap-2 mt-2 text-xs font-bold text-slate-700 dark:text-slate-300 bg-white/70 dark:bg-slate-800/70 py-1 px-3 rounded-xl border border-amber-200 dark:border-slate-700 w-fit mx-auto">
-                    <UserCheck className="w-3.5 h-3.5 text-amber-600" />
-                    <span>العميل: {selectedCustomer.name}</span>
-                    {selectedCustomer.currentDebt ? (
-                      <span className="text-[10px] text-rose-600 font-mono">
-                        (دين سابق: {formatCurrency(selectedCustomer.currentDebt)})
-                      </span>
-                    ) : null}
-                  </div>
-                )}
-              </div>
-
-              {/* Payment Methods Selector (4 Options including Ajal / Credit) */}
-              <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
-                  {t('paymentMethod')} (طريقة السداد):
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {/* 1. Cash */}
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('cash')}
-                    className={`flex flex-col items-center justify-center p-3.5 min-h-[64px] rounded-2xl border transition-all cursor-pointer active:scale-95 ${
-                      paymentMethod === 'cash'
-                        ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20 font-bold scale-[1.02]'
-                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Banknote className="w-5 h-5 mb-1" />
-                    <span className="text-xs font-bold">{t('cash')}</span>
-                  </button>
-
-                  {/* 2. Card */}
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('card')}
-                    className={`flex flex-col items-center justify-center p-3.5 min-h-[64px] rounded-2xl border transition-all cursor-pointer active:scale-95 ${
-                      paymentMethod === 'card'
-                        ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20 font-bold scale-[1.02]'
-                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    <CreditCard className="w-5 h-5 mb-1" />
-                    <span className="text-xs font-bold">{t('card')}</span>
-                  </button>
-
-                  {/* 3. Transfer */}
-                  <button
-                    type="button"
-                    onClick={() => setPaymentMethod('transfer')}
-                    className={`flex flex-col items-center justify-center p-3.5 min-h-[64px] rounded-2xl border transition-all cursor-pointer active:scale-95 ${
-                      paymentMethod === 'transfer'
-                        ? 'bg-amber-500 text-white border-amber-500 shadow-md shadow-amber-500/20 font-bold scale-[1.02]'
-                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    <Send className="w-5 h-5 mb-1" />
-                    <span className="text-xs font-bold">{t('transfer')}</span>
-                  </button>
-
-                  {/* 4. Ajal / Credit (آجل على الحساب) */}
-                  <button
-                    type="button"
-                    id="btn-payment-method-credit"
-                    onClick={() => setPaymentMethod('credit')}
-                    className={`flex flex-col items-center justify-center p-3.5 min-h-[64px] rounded-2xl border transition-all cursor-pointer active:scale-95 ${
-                      paymentMethod === 'credit'
-                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/20 font-bold scale-[1.02]'
-                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100'
-                    }`}
-                  >
-                    <FileText className="w-5 h-5 mb-1 text-indigo-400" />
-                    <span className="text-xs font-bold">آجل (ذمم)</span>
-                  </button>
-                </div>
-              </div>
+          </div>
 
               {/* CREDIT SPECIFIC SECTION (اختيار العميل وتفاصيل الدين) */}
               {paymentMethod === 'credit' && (
@@ -430,6 +425,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                     <button
                       type="button"
                       onClick={handleSetExact}
+                      data-longpress-title="المبلغ بالتمام والكمال"
+                      data-longpress-desc="تعيين المبلغ المستلم ليساوي بالضبط إجمالي الفاتورة دون أي باقي أو فكة."
                       className="text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 px-3 py-1.5 min-h-[38px] rounded-xl flex items-center gap-1 active:scale-95 transition-all cursor-pointer"
                     >
                       <Coins className="w-3.5 h-3.5" />
@@ -463,6 +460,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                           key={val}
                           type="button"
                           onClick={() => setPaidAmount(val)}
+                          data-longpress-title={`فئة ${val.toLocaleString()} ${settings.currency.symbol}`}
+                          data-longpress-desc={`تحديد أن العميل سلّم ورقة نقدية من فئة ${val.toLocaleString()} ${settings.currency.symbol} لاحتساب الباقي فوراً.`}
                           className="min-h-[46px] py-2.5 px-2 bg-white dark:bg-slate-900 hover:bg-amber-50 dark:hover:bg-amber-950/40 text-xs font-black font-mono text-slate-800 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 transition-all active:scale-95 text-center shadow-2xs cursor-pointer flex items-center justify-center"
                         >
                           {val.toLocaleString()}
@@ -479,6 +478,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                         key={inc}
                         type="button"
                         onClick={() => handleAddAmount(inc)}
+                        data-longpress-title={`إضافة ${inc.toLocaleString()}`}
+                        data-longpress-desc={`إضافة ورقة إضافية بقيمة ${inc.toLocaleString()} إلى إجمالي ما استلمته من الزبون.`}
                         className="min-h-[40px] px-3 py-2 bg-slate-200/80 dark:bg-slate-700/80 hover:bg-amber-100 dark:hover:bg-amber-900/40 text-xs font-mono font-bold text-slate-700 dark:text-slate-300 rounded-xl transition-all active:scale-95 cursor-pointer flex items-center gap-1"
                       >
                         <Plus className="w-3.5 h-3.5" />
@@ -545,6 +546,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                   (paymentMethod === 'credit' && !selectedCustomer)
                 }
                 onClick={handleCompletePayment}
+                data-longpress-title="تأكيد الدفع وطباعة الفاتورة"
+                data-longpress-desc="حفظ الفاتورة نهائياً، خصم الكميات من المستودع، تسجيل الحركة في الصندوق، وإظهار إيصال الطباعة المباشرة."
                 className={`w-full py-4 min-h-[54px] rounded-2xl text-white font-extrabold text-sm sm:text-base flex items-center justify-center gap-2 shadow-lg transition-all active:scale-98 cursor-pointer ${
                   (paymentMethod === 'cash' && paidAmount < totalAmount) ||
                   (paymentMethod === 'credit' && !selectedCustomer)
@@ -561,10 +564,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                     : `${t('completeSale')} (${formatCurrency(totalAmount)})`}
                 </span>
               </button>
-            </div>
-          </div>
         </div>
-      )}
+      </DraggableModalWrapper>
 
       {/* Printable Receipt Modal */}
       <PrintableReceiptModal

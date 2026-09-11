@@ -30,7 +30,8 @@ import { PinSwitchModal } from './components/modals/PinSwitchModal';
 import { GlobalSearchModal } from './components/modals/GlobalSearchModal';
 import { ModeSelectionModal } from './components/modals/ModeSelectionModal';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
-import { WifiOff, RefreshCw, ArrowLeftRight, Database, CheckCircle2 } from 'lucide-react';
+import { LongPressProvider } from './components/common/LongPressTooltip';
+import { WifiOff, RefreshCw, ArrowLeftRight, Database, CheckCircle2, Leaf } from 'lucide-react';
 
 const AppContent: React.FC = () => {
   const { 
@@ -50,7 +51,10 @@ const AppContent: React.FC = () => {
     offlineQueueCount,
     isSyncingOffline,
     syncOfflineQueueNow,
-    isOnline
+    isOnline,
+    isPowerSavingActive,
+    isPowerSavingStandby,
+    wakeFromStandby
   } = useApp();
 
   // PWA Service Worker Registration & Background Sync Listener
@@ -192,7 +196,7 @@ const AppContent: React.FC = () => {
       {(!isOnline || offlineQueueCount > 0) && (
         <aside
           aria-label="حالة الاتصال والمزامنة"
-          className="fixed bottom-18 md:bottom-5 start-4 z-40 flex flex-wrap items-center gap-2.5 py-2 px-3 rounded-2xl bg-slate-900/95 dark:bg-slate-800/95 text-white backdrop-blur-md shadow-2xl border border-slate-700/80 text-xs animate-in slide-in-from-bottom-3 duration-300"
+          className="fixed bottom-32 md:bottom-5 start-2 sm:start-4 end-2 sm:end-auto z-40 flex flex-wrap items-center gap-2.5 py-2 px-3 rounded-2xl bg-slate-900/95 dark:bg-slate-800/95 text-white backdrop-blur-md shadow-2xl border border-slate-700/80 text-xs animate-in slide-in-from-bottom-3 duration-300 max-w-[calc(100vw-1rem)] sm:max-w-md"
         >
           <div className="flex items-center gap-2">
             {!isOnline ? (
@@ -228,6 +232,8 @@ const AppContent: React.FC = () => {
                 type="button"
                 onClick={syncOfflineQueueNow}
                 disabled={isSyncingOffline}
+                data-longpress-title="مزامنة فورية"
+                data-longpress-desc="رفع ومزامنة كافة العمليات المخزنة محلياً في IndexedDB إلى الخادم وقاعدة البيانات المركزية."
                 className="flex items-center gap-1 py-1 px-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
                 title="مزامنة العمليات المعلقة الآن بحزمة مضغوطة"
               >
@@ -239,6 +245,8 @@ const AppContent: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsDataTransferModalOpen(true)}
+              data-longpress-title="نقل البيانات السريع"
+              data-longpress-desc="تصدير ونقل بيانات المتجر والمخزون إلى هاتف أو جهاز كاشير آخر عبر رمز QR أو كود الربط."
               className="flex items-center gap-1 py-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors cursor-pointer"
               title="نقل البيانات إلى جهاز آخر عبر كود الربط"
             >
@@ -248,6 +256,32 @@ const AppContent: React.FC = () => {
           </div>
         </aside>
       )}
+
+      {/* Power Saving Standby Screen Wake Overlay */}
+      {isPowerSavingStandby && (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={wakeFromStandby}
+          onKeyDown={wakeFromStandby}
+          className="fixed inset-0 z-50 bg-black/40 backdrop-blur-[1px] flex flex-col items-center justify-center text-center p-6 cursor-pointer select-none animate-in fade-in duration-300"
+        >
+          <div className="bg-slate-900/95 text-white p-7 rounded-3xl border border-slate-700/80 shadow-2xl max-w-sm flex flex-col items-center gap-3">
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center animate-pulse">
+              <Leaf className="w-7 h-7" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold">وضع الاستعداد وتوفير الطاقة</h3>
+              <p className="text-xs text-slate-300 mt-1">
+                تم تعتيم الشاشة لحفظ طاقة البطارية أثناء عدم الاستخدام
+              </p>
+            </div>
+            <div className="px-5 py-2.5 rounded-xl bg-amber-500 text-slate-950 font-black text-xs mt-2 hover:bg-amber-400 transition-colors">
+              المس الشاشة أو اضغط أي مفتاح للاستيقاظ
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -256,7 +290,9 @@ export default function App() {
   return (
     <ErrorBoundary>
       <AppProvider>
-        <AppContent />
+        <LongPressProvider>
+          <AppContent />
+        </LongPressProvider>
       </AppProvider>
     </ErrorBoundary>
   );

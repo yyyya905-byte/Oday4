@@ -41,6 +41,73 @@ export const BottomNav: React.FC = () => {
     { id: 'dashboard', label: t('navDashboard'), icon: LayoutDashboard },
   ];
 
+  const tabDescriptions: Record<ActiveTab, { title: string; desc: string }> = {
+    pos: {
+      title: 'شاشة الكاشير ونقطة البيع (POS)',
+      desc: 'إصدار الفواتير الفورية، وتمرير المنتجات بالباركود، والدفع نقداً أو بالبطاقة أو آجل.'
+    },
+    products: {
+      title: 'كتالوج وإدارة المنتجات',
+      desc: 'إضافة وتعديل المنتجات وأسعار التجزئة والجملة، وإدارة وحدات القياس وأكواد الباركود.'
+    },
+    customers: {
+      title: 'سجل العملاء والولاء',
+      desc: 'إدارة بيانات العملاء، وسجلات الشراء، ورصيد نقاط المكافآت وكشوف الحساب.'
+    },
+    debts: {
+      title: 'دفتر الديون والمستحقات',
+      desc: 'متابعة الديون الآجلة على الزبائن، ومستحقات الموردين وسندات القبض والصرف.'
+    },
+    invoices: {
+      title: 'أرشيف المبيعات والفواتير',
+      desc: 'سجل الفواتير الصادرة، وإعادة طباعة الإيصالات، وتصدير التقارير الضريبية.'
+    },
+    returns: {
+      title: 'إدارة المرتجعات والاسترجاع',
+      desc: 'معالجة استرجاع الفواتير بمسح الباركود، وإرجاع المنتجات لمخزون المستودع.'
+    },
+    trade: {
+      title: 'مركز تجارة الجملة والتوزيع',
+      desc: 'إدارة طلبيات كبار التجار، ومستويات أسعار الجملة ونصف الجملة والتوزيع.'
+    },
+    inventory: {
+      title: 'المخازن والجرد وسيارات النقل',
+      desc: 'مراقبة كميات المخزون، وجرد المستودعات، وتوزيع البضائع عبر سيارات النقل.'
+    },
+    dashboard: {
+      title: 'لوحة التحكم والمؤشرات',
+      desc: 'إحصائيات المبيعات اللحظية، والأرباح الصافية، والمنتجات الأكثر طلباً.'
+    },
+    ai: {
+      title: 'المساعد الذكي (Gemini AI)',
+      desc: 'تحليل أداء المتجر بالذكاء الاصطناعي، واقتراح خطط تسعير ذكية وتنبؤات المخزون.'
+    },
+    expenses: {
+      title: 'المصروفات والمصاريف اليومية',
+      desc: 'تسجيل مصاريف المحل والكهرباء والإيجار والرواتب لمطابقتها في كشف الأرباح.'
+    },
+    reports: {
+      title: 'التقارير المالية والمحاسبية',
+      desc: 'تقارير الإيرادات، والأرباح، والضريبة، وحركة الصندوق والورديات.'
+    },
+    staff: {
+      title: 'طاقم العمل والموظفين',
+      desc: 'إدارة صلاحيات الكاشير والمشرفين، ومتابعة سجلات تسجيل الدخول والورديات.'
+    },
+    devices: {
+      title: 'مركز ربط الأجهزة والشاشات',
+      desc: 'مزامنة شاشات المطبخ KDS، شاشات العرض للعملاء، ونقاط البيع الإضافية.'
+    },
+    settings: {
+      title: 'إعدادات النظام والنسخ السحابي',
+      desc: 'تخصيص معلومات المتجر، وإعدادات الطابعات، ومزامنة النسخ مع Google Drive.'
+    },
+    about: {
+      title: 'حول النظام والدعم الفني',
+      desc: 'معلومات الإصدار، حالة قاعدة البيانات المحلية، وإرشادات الاستخدام.'
+    }
+  };
+
   const mainTabs = candidateMainTabs.filter(tab => canAccessTab(tab.id, currentUser.role)).slice(0, 4);
 
   const categorizedMoreTabs = [
@@ -114,6 +181,7 @@ export const BottomNav: React.FC = () => {
                   {cat.items.map(item => {
                     const Icon = item.icon;
                     const isActive = activeTab === item.id;
+                    const tooltip = tabDescriptions[item.id] || { title: item.label, desc: '' };
                     return (
                       <button
                         key={item.id}
@@ -122,6 +190,8 @@ export const BottomNav: React.FC = () => {
                           setActiveTab(item.id);
                           setIsMoreMenuOpen(false);
                         }}
+                        data-longpress-title={tooltip.title}
+                        data-longpress-desc={tooltip.desc}
                         className={`flex items-center gap-2.5 p-3 rounded-2xl border text-right transition-all cursor-pointer active:scale-95 min-h-[46px] ${
                           isActive
                             ? 'bg-amber-500 text-slate-950 border-amber-500 font-extrabold shadow-sm'
@@ -145,12 +215,15 @@ export const BottomNav: React.FC = () => {
         {mainTabs.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
+          const tooltip = tabDescriptions[tab.id] || { title: tab.label, desc: '' };
           return (
             <button
               key={tab.id}
               id={`mobile-tab-${tab.id}`}
               type="button"
               onClick={() => setActiveTab(tab.id)}
+              data-longpress-title={tooltip.title}
+              data-longpress-desc={tooltip.desc}
               className={`flex-1 flex flex-col items-center justify-center h-full relative transition-all cursor-pointer active:scale-90 ${
                 isActive ? 'text-amber-600 dark:text-amber-400 font-bold' : 'text-slate-500 dark:text-slate-400'
               }`}
@@ -173,6 +246,8 @@ export const BottomNav: React.FC = () => {
           id="mobile-tab-more"
           type="button"
           onClick={() => setIsMoreMenuOpen(true)}
+          data-longpress-title="أقسام المنظومة الإضافية"
+          data-longpress-desc="تصفح جميع أقسام البيع بالجملة، التقارير المالية، طاقم العمل، والأجهزة المتصلة والإعدادات."
           className="flex-1 flex flex-col items-center justify-center h-full text-slate-500 dark:text-slate-400 cursor-pointer active:scale-90 transition-transform"
         >
           <MoreHorizontal className="w-5 h-5" />

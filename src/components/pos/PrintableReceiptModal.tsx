@@ -2,9 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { Sale } from '../../types';
 import QRCode from 'qrcode';
-import { Printer, CheckCircle, X, Barcode as BarcodeIcon, ZoomIn, ZoomOut, Sliders, Scissors } from 'lucide-react';
+import { Printer, CheckCircle, X, Barcode as BarcodeIcon, ZoomIn, ZoomOut, Sliders, Scissors, Bluetooth, RefreshCw } from 'lucide-react';
 import { generateBarcodeSvg } from '../../utils/barcodeUtils';
 import { soundEffects } from '../../services/audio';
+import { DraggableModalWrapper } from '../common/DraggableModalWrapper';
+import { bluetoothPrinter, BluetoothPrinterStatus } from '../../services/bluetoothPrinter';
+import { BluetoothPrinterModal } from './BluetoothPrinterModal';
 
 interface PrintableReceiptModalProps {
   isOpen: boolean;
@@ -17,9 +20,20 @@ export const PrintableReceiptModal: React.FC<PrintableReceiptModalProps> = ({
   onClose,
   sale
 }) => {
-  const { settings, formatCurrency, t, language } = useApp();
+  const { settings, formatCurrency, t, language, notify } = useApp();
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
   const [zoomScale, setZoomScale] = useState<number>(1.0);
+  const [btStatus, setBtStatus] = useState<BluetoothPrinterStatus>(bluetoothPrinter.getStatus());
+  const [isBtPrinting, setIsBtPrinting] = useState<boolean>(false);
+  const [btProgress, setBtProgress] = useState<number>(0);
+  const [isBtModalOpen, setIsBtModalOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    const unsub = bluetoothPrinter.subscribe(status => {
+      setBtStatus(status);
+    });
+    return unsub;
+  }, []);
 
   useEffect(() => {
     if (sale) {
@@ -60,6 +74,41 @@ export const PrintableReceiptModal: React.FC<PrintableReceiptModalProps> = ({
     window.print();
   };
 
+  const handleBluetoothPrint = async () => {
+    if (!btStatus.isConnected) {
+      // Prompt user to connect or open bluetooth modal
+      const connected = await bluetoothPrinter.connect();
+      if (!connected) {
+        setIsBtModalOpen(true);
+        return;
+      }
+    }
+
+    try {
+      setIsBtPrinting(true);
+      setBtProgress(15);
+      soundEffects.playBeep();
+
+      const success = await bluetoothPrinter.printSaleReceipt(
+        sale,
+        settings,
+        paperSize === '58mm' ? '58mm' : '80mm',
+        (percent) => setBtProgress(percent)
+      );
+
+      if (success) {
+        soundEffects.playSuccess();
+        notify('تمت الطباعة عبر البلوتوث', `تم إرسال الفاتورة #${sale.invoiceNumber} لطابعة البلوتوث بنجاح`, 'success');
+      }
+    } catch (err: any) {
+      soundEffects.playWarning();
+      notify('خطأ بالطباعة اللاسلكية', err.message || 'تعذر إرسال الفاتورة للطابعة', 'error');
+    } finally {
+      setIsBtPrinting(false);
+      setBtProgress(0);
+    }
+  };
+
   // Resolved Margins & Font Sizing
   const topMargin = settings.receiptTopMarginMm ?? 3;
   const bottomMargin = settings.receiptBottomMarginMm ?? 4;
@@ -72,64 +121,86 @@ export const PrintableReceiptModal: React.FC<PrintableReceiptModalProps> = ({
   const fontSizeClass = fontScale === 'compact' ? 'text-[10px]' : fontScale === 'large' ? 'text-[13px]' : 'text-[11.5px]';
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in">
-      <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden my-4 flex flex-col max-h-[92vh]">
-        {/* Modal Top Actions (no-print) */}
-        <div className="p-3.5 sm:p-4 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between no-print">
-          <div className="flex items-center gap-2">
-            <CheckCircle className="w-5 h-5 text-emerald-500 shrink-0" />
-            <div>
-              <h3 className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
-                <span>معاينة الفاتورة قبل الطباعة</span>
-              </h3>
-              <div className="flex items-center gap-1 text-[10px] text-slate-500 font-mono">
-                <span>رقم: {sale.invoiceNumber}</span>
-                <span>•</span>
-                <span className="text-amber-600 dark:text-amber-400 font-bold">{paperSize}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5">
-            {/* Zoom Controls */}
-            <div className="hidden sm:flex items-center gap-1 bg-white dark:bg-slate-700 p-1 rounded-xl border border-slate-200 dark:border-slate-600">
-              <button
-                type="button"
-                onClick={() => setZoomScale(z => Math.max(0.8, Number((z - 0.1).toFixed(1))))}
-                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-600 rounded-lg text-slate-500 dark:text-slate-300"
-                title="تصغير المعاينة"
-              >
-                <ZoomOut className="w-3.5 h-3.5" />
-              </button>
-              <span className="text-[10px] font-mono font-bold px-1 text-slate-700 dark:text-slate-200">
-                {Math.round(zoomScale * 100)}%
-              </span>
-              <button
-                type="button"
-                onClick={() => setZoomScale(z => Math.min(1.4, Number((z + 0.1).toFixed(1))))}
-                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-600 rounded-lg text-slate-500 dark:text-slate-300"
-                title="تكبير المعاينة"
-              >
-                <ZoomIn className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
+    <DraggableModalWrapper
+      isOpen={isOpen}
+      onClose={onClose}
+      title="معاينة الفاتورة قبل الطباعة"
+      subtitle={`رقم: ${sale.invoiceNumber} • ${paperSize}`}
+      icon={<CheckCircle className="w-5 h-5 text-emerald-500 shrink-0" />}
+      maxWidth="max-w-lg"
+      className="max-h-[92vh] flex flex-col"
+      headerExtra={
+        <div className="flex items-center gap-1.5">
+          {/* Zoom Controls */}
+          <div className="hidden sm:flex items-center gap-1 bg-white dark:bg-slate-700 p-1 rounded-xl border border-slate-200 dark:border-slate-600">
             <button
-              onClick={handlePrint}
-              id="btn-print-receipt-confirm"
-              className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+              type="button"
+              onClick={() => setZoomScale(z => Math.max(0.8, Number((z - 0.1).toFixed(1))))}
+              data-longpress-title="تصغير المعاينة"
+              data-longpress-desc="تقليل مقياس عرض الفاتورة على الشاشة لمشاهدة التفاصيل بالكامل."
+              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-600 rounded-lg text-slate-500 dark:text-slate-300 cursor-pointer"
+              title="تصغير المعاينة"
             >
-              <Printer className="w-4 h-4" />
-              <span>طباعة (Enter)</span>
+              <ZoomOut className="w-3.5 h-3.5" />
             </button>
+            <span className="text-[10px] font-mono font-bold px-1 text-slate-700 dark:text-slate-200">
+              {Math.round(zoomScale * 100)}%
+            </span>
             <button
-              onClick={onClose}
-              className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+              type="button"
+              onClick={() => setZoomScale(z => Math.min(1.4, Number((z + 0.1).toFixed(1))))}
+              data-longpress-title="تكبير المعاينة"
+              data-longpress-desc="تكبير مقياس الفاتورة لفحص النصوص والأسعار بوضوح."
+              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-600 rounded-lg text-slate-500 dark:text-slate-300 cursor-pointer"
+              title="تكبير المعاينة"
             >
-              <X className="w-5 h-5" />
+              <ZoomIn className="w-3.5 h-3.5" />
             </button>
           </div>
+
+          {/* Bluetooth ESC/POS Direct Print Button */}
+          <button
+            type="button"
+            onClick={handleBluetoothPrint}
+            disabled={isBtPrinting}
+            data-longpress-title="طباعة حرارية عبر البلوتوث (ESC/POS)"
+            data-longpress-desc="إرسال الفاتورة لاسلكياً ومباشرة إلى طابعة الإيصالات الحرارية المتصلة عبر البلوتوث."
+            className={`flex items-center gap-1.5 px-3 py-2 font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer active:scale-95 ${
+              btStatus.isConnected
+                ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'
+                : 'bg-blue-50 dark:bg-blue-950/50 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+            }`}
+            title="طباعة عبر طابعة البلوتوث الحرارية"
+          >
+            {isBtPrinting ? (
+              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Bluetooth className={`w-3.5 h-3.5 ${btStatus.isConnected ? 'text-white' : 'text-blue-600 dark:text-blue-400'}`} />
+            )}
+            <span className="hidden sm:inline">
+              {isBtPrinting 
+                ? `جاري الإرسال (${btProgress}%)...` 
+                : btStatus.isConnected 
+                  ? `بلوتوث (${btStatus.deviceName?.slice(0, 10) || 'متصل'})` 
+                  : 'بلوتوث ESC/POS'
+              }
+            </span>
+          </button>
+
+          <button
+            onClick={handlePrint}
+            id="btn-print-receipt-confirm"
+            data-longpress-title="طباعة الفاتورة (Enter)"
+            data-longpress-desc="إرسال الفاتورة الحالية إلى الطابعة الحرارية مباشرة أو حفظها كـ PDF."
+            className="flex items-center gap-1.5 px-3 sm:px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-95 text-white font-extrabold text-xs rounded-xl shadow-md shadow-amber-500/20 transition-all cursor-pointer"
+          >
+            <Printer className="w-4 h-4" />
+            <span>طباعة (Enter)</span>
+          </button>
         </div>
+      }
+    >
+      <div className="flex flex-col flex-1 overflow-hidden">
 
         {/* Live Calibration Info Strip (no-print) */}
         <div className="bg-amber-50/70 dark:bg-amber-950/30 px-4 py-1.5 border-b border-amber-200/50 dark:border-amber-900/30 flex items-center justify-between text-[10px] text-amber-900 dark:text-amber-200 no-print">
@@ -420,25 +491,66 @@ export const PrintableReceiptModal: React.FC<PrintableReceiptModalProps> = ({
         </div>
 
         {/* Bottom Bar: Action Buttons */}
-        <div className="p-3 sm:p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 no-print">
+        <div className="p-3 sm:p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2.5 no-print">
           <button
             type="button"
             onClick={onClose}
-            className="flex-1 py-3 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 font-bold text-xs rounded-2xl transition-all cursor-pointer text-center"
+            data-longpress-title="بدء عملية بيع جديدة"
+            data-longpress-desc="إغلاق نافذة المعاينة والرجوع إلى شاشة الكاشير للبدء بفاتورة جديدة فوراً."
+            className="w-full sm:w-auto px-4 py-3 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-100 font-bold text-xs rounded-2xl transition-all cursor-pointer text-center"
           >
-            {t('newSale')} (بدء عملية بيع جديدة)
+            {t('newSale')} (جديدة)
           </button>
-          <button
-            type="button"
-            onClick={handlePrint}
-            className="flex-1 py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-2xl shadow-md shadow-amber-500/20 transition-all cursor-pointer flex items-center justify-center gap-2"
-          >
-            <Printer className="w-4 h-4" />
-            <span>طباعة الإيصال فوراً</span>
-          </button>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-1 justify-end">
+            {/* Direct Bluetooth Print Button */}
+            <button
+              type="button"
+              onClick={handleBluetoothPrint}
+              disabled={isBtPrinting}
+              data-longpress-title="طباعة عبر طابعة البلوتوث"
+              data-longpress-desc="إرسال الفاتورة عبر اتصال البلوتوث اللاسلكي مباشرة."
+              className={`flex-1 sm:flex-initial py-3 px-4 rounded-2xl font-black text-xs shadow-md transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95 disabled:opacity-60 ${
+                btStatus.isConnected
+                  ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20'
+                  : 'bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700'
+              }`}
+            >
+              {isBtPrinting ? (
+                <RefreshCw className="w-4 h-4 animate-spin" />
+              ) : (
+                <Bluetooth className="w-4 h-4" />
+              )}
+              <span>
+                {isBtPrinting
+                  ? `جاري الإرسال (${btProgress}%)...`
+                  : btStatus.isConnected
+                    ? `طباعة بلوتوث (${btStatus.deviceName || 'متصل'})`
+                    : 'طباعة طابعة بلوتوث (ESC/POS)'
+                }
+              </span>
+            </button>
+
+            {/* Standard Window Print Button */}
+            <button
+              type="button"
+              onClick={handlePrint}
+              data-longpress-title="طباعة الإيصال فوراً"
+              data-longpress-desc="إرسال أمر الطباعة المباشر إلى الطابعة الموصولة."
+              className="flex-1 sm:flex-initial py-3 px-5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-2xl shadow-md shadow-amber-500/20 transition-all cursor-pointer flex items-center justify-center gap-2 active:scale-95"
+            >
+              <Printer className="w-4 h-4" />
+              <span>طباعة عادية (كابل/PDF)</span>
+            </button>
+          </div>
         </div>
       </div>
-    </div>
+
+      <BluetoothPrinterModal
+        isOpen={isBtModalOpen}
+        onClose={() => setIsBtModalOpen(false)}
+      />
+    </DraggableModalWrapper>
   );
 };
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
 import { GoogleDriveBackupFile } from '../../types';
 import { googleDriveBackupService, GoogleDriveUser } from '../../services/googleDriveBackup';
+import { GoogleIcon } from '../common/GoogleIcon';
 import {
   Cloud,
   CloudUpload,
@@ -265,7 +266,7 @@ export const GoogleDriveBackupSection: React.FC<Props> = ({ onNotify }) => {
               disabled={isLoading}
               className="flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:hover:bg-slate-100 dark:text-slate-950 text-xs font-black rounded-xl shadow-xs transition-all cursor-pointer"
             >
-              <Cloud className="w-4 h-4 text-amber-500" />
+              <GoogleIcon className="w-4 h-4" />
               <span>ربط حساب Google Drive</span>
             </button>
           )}

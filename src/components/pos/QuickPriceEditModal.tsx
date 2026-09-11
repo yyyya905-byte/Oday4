@@ -17,6 +17,7 @@ import {
   Percent
 } from 'lucide-react';
 import { soundEffects } from '../../services/audio';
+import { DraggableModalWrapper } from '../common/DraggableModalWrapper';
 
 interface QuickPriceEditModalProps {
   isOpen: boolean;
@@ -134,45 +135,24 @@ export const QuickPriceEditModal: React.FC<QuickPriceEditModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-in fade-in duration-150">
-      <div 
-        className="w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[92vh] animate-in zoom-in-95 duration-200"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Modal Header */}
-        <div className="p-4 bg-gradient-to-r from-amber-500/10 via-slate-50 to-white dark:from-amber-500/10 dark:via-slate-800/60 dark:to-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className="p-2.5 rounded-2xl bg-amber-500 text-slate-950 shadow-xs">
-              <DollarSign className="w-5 h-5" />
-            </span>
-            <div>
-              <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <span>تعديل سعر المنتج مباشرة</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300">
-                  {isCartItem ? 'صنف بالسلة' : 'بطاقة الصنف'}
-                </span>
-              </h3>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                {isCartItem 
-                  ? 'تعديل سعر بيع الصنف في الفاتورة الحالية مع خيار تحديث السعر الدائم'
-                  : 'تعديل فوري لسعر المنتج من شاشة الكاشير دون الحاجة لمغادرة نقطة البيع'}
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 flex items-center justify-center transition-colors cursor-pointer"
-            aria-label="إغلاق"
-          >
-            <X className="w-4 h-4" />
-          </button>
+    <DraggableModalWrapper
+      isOpen={isOpen}
+      onClose={onClose}
+      title={
+        <div className="flex items-center gap-2">
+          <span>تعديل سعر المنتج مباشرة</span>
+          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-800 dark:text-amber-300">
+            {isCartItem ? 'صنف بالسلة' : 'بطاقة الصنف'}
+          </span>
         </div>
-
-        {/* Modal Body */}
-        <div className="p-5 overflow-y-auto space-y-4">
-          {/* Product Identification Bar */}
+      }
+      subtitle={isCartItem ? 'تعديل سعر البيع بالفاتورة الحالية' : 'تعديل فوري لسعر المنتج من شاشة الكاشير'}
+      icon={<DollarSign className="w-5 h-5 text-amber-500" />}
+      maxWidth="max-w-lg"
+    >
+      {/* Modal Body */}
+      <div className="p-4 sm:p-5 space-y-4">
+        {/* Product Identification Bar */}
           <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/80 flex items-start justify-between gap-3">
             <div className="space-y-1 min-w-0">
               <h4 className="text-sm font-black text-slate-900 dark:text-white truncate">
@@ -439,7 +419,7 @@ export const QuickPriceEditModal: React.FC<QuickPriceEditModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="p-4 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
+        <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3">
           <button
             type="button"
             onClick={onClose}
@@ -451,13 +431,14 @@ export const QuickPriceEditModal: React.FC<QuickPriceEditModalProps> = ({
           <button
             type="button"
             onClick={handleConfirm}
-            className="px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
+            data-longpress-title="حفظ السعر الجديد"
+            data-longpress-desc="تطبيق السعر الجديد وحفظ التعديلات في الفاتورة أو بطاقة الصنف بالمخزون."
+            className="px-5 sm:px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs shadow-md active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer"
           >
             <Check className="w-4 h-4" />
             <span>حفظ السعر الجديد ({formatCurrency(numericPrice)})</span>
           </button>
         </div>
-      </div>
-    </div>
+    </DraggableModalWrapper>
   );
 };

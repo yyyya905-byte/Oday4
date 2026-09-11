@@ -3,6 +3,18 @@ export type DiningType = 'dine_in' | 'takeaway' | 'delivery';
 
 export type UserRole = 'owner' | 'admin' | 'manager' | 'supervisor' | 'cashier' | 'inventory' | 'accountant';
 
+export interface GoogleAuthUser {
+  id: string; // Google Subject ID
+  email: string;
+  name: string;
+  picture?: string;
+  accessToken?: string;
+  idToken?: string;
+  signedInAt: string;
+  role?: UserRole;
+  isVerified?: boolean;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -14,6 +26,9 @@ export interface User {
   phone?: string;
   branchId?: string;
   createdAt: string;
+  googleId?: string;
+  googleEmail?: string;
+  isGoogleAccount?: boolean;
 }
 
 export interface Category {

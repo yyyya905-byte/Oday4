@@ -3,6 +3,7 @@ import { useApp } from '../../context/AppContext';
 import { ScanBarcode, Camera, Search, PlusCircle, X, AlertCircle, Video, VideoOff, Check, RefreshCw } from 'lucide-react';
 import { soundEffects } from '../../services/audio';
 import { Html5Qrcode } from 'html5-qrcode';
+import { DraggableModalWrapper } from '../common/DraggableModalWrapper';
 
 interface BarcodeScannerModalProps {
   isOpen: boolean;
@@ -133,33 +134,18 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-      <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <ScanBarcode className="w-5 h-5 text-amber-500" />
-            <div>
-              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                {language === 'ar' ? 'قارئ الباركود المباشر' : 'Live Barcode Scanner'}
-              </h3>
-              <p className="text-[10px] text-slate-500">
-                {language === 'ar' ? 'يدعم كاميرا الجهاز ومسدسات الباركود USB وبلوتوث' : 'Supports Camera & USB/Bluetooth scanners'}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={() => {
-              stopCamera();
-              onClose();
-            }}
-            className="p-1 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <div className="p-5 overflow-y-auto space-y-4">
+    <DraggableModalWrapper
+      isOpen={isOpen}
+      onClose={() => {
+        stopCamera();
+        onClose();
+      }}
+      title={language === 'ar' ? 'قارئ الباركود المباشر' : 'Live Barcode Scanner'}
+      subtitle={language === 'ar' ? 'كاميرا الجهاز ومسدسات USB وبلوتوث' : 'Camera & USB/Bluetooth scanners'}
+      icon={<ScanBarcode className="w-5 h-5 text-amber-500" />}
+      maxWidth="max-w-md"
+    >
+      <div className="p-4 sm:p-5 space-y-4">
           {/* Viewfinder Camera Feed Container */}
           <div className="relative w-full min-h-[190px] bg-slate-950 rounded-2xl flex flex-col items-center justify-center overflow-hidden border-2 border-dashed border-amber-500/60 shadow-inner">
             <div id="barcode-scanner-video-box" className="w-full h-full overflow-hidden rounded-xl" />
@@ -297,7 +283,6 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
             </div>
           )}
         </div>
-      </div>
-    </div>
+    </DraggableModalWrapper>
   );
 };

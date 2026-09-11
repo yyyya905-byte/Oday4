@@ -5,9 +5,13 @@ import { UtensilsCrossed, Users, Sparkles, Clock, MapPin, Coffee, Check, Chevron
 
 interface RestaurantPOSHeaderProps {
   onOpenKitchenTicket?: () => void;
+  onOpenGuestKeypad?: () => void;
 }
 
-export const RestaurantPOSHeader: React.FC<RestaurantPOSHeaderProps> = ({ onOpenKitchenTicket }) => {
+export const RestaurantPOSHeader: React.FC<RestaurantPOSHeaderProps> = ({ 
+  onOpenKitchenTicket,
+  onOpenGuestKeypad
+}) => {
   const {
     restaurantDiningType,
     setRestaurantDiningType,
@@ -178,7 +182,14 @@ export const RestaurantPOSHeader: React.FC<RestaurantPOSHeaderProps> = ({ onOpen
               >
                 <Minus className="w-3.5 h-3.5" />
               </button>
-              <span className="font-mono font-bold text-white px-2 text-sm">{guestCount}</span>
+              <button
+                type="button"
+                onClick={onOpenGuestKeypad}
+                className="font-mono font-bold text-white px-2 py-0.5 rounded-lg hover:bg-emerald-800/80 active:scale-95 text-sm transition-all cursor-pointer"
+                title={language === 'ar' ? 'انقر لتعديل عدد الضيوف باللوحة الرقمية اللمسية' : 'Click to edit guest count with touch keypad'}
+              >
+                {guestCount}
+              </button>
               <button
                 type="button"
                 onClick={() => setGuestCount(guestCount + 1)}
