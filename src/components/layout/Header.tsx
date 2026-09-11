@@ -8,7 +8,6 @@ import {
   Bell,
   Wifi,
   WifiOff,
-  UserCheck,
   Languages,
   ShieldCheck,
   CheckCircle2,
@@ -19,26 +18,18 @@ import {
   Building2,
   Store,
   SlidersHorizontal,
-  Sparkles,
-  Radio,
-  Cloud,
-  DollarSign,
-  Barcode as BarcodeIcon,
-  Coins,
-  ArrowLeftRight,
-  Database,
+  Wrench,
+  Grid,
   RefreshCw,
-  MoreVertical,
-  Battery,
-  BatteryCharging,
-  Leaf,
-  Zap
+  MoreVertical
 } from 'lucide-react';
 import { PinSwitchModal } from '../modals/PinSwitchModal';
 import { ExchangeBulletinBar } from '../currency/ExchangeBulletinBar';
 import { ExchangeBulletinModal } from '../currency/ExchangeBulletinModal';
 import { BarcodeDesignerModal } from '../barcode/BarcodeDesignerModal';
-import { canAccessTab, getRoleInfo } from '../../utils/permissions';
+import { ToolsHubModal } from '../modals/ToolsHubModal';
+import { SectionsNavModal } from '../modals/SectionsNavModal';
+import { getRoleInfo } from '../../utils/permissions';
 import { GoogleIcon } from '../common/GoogleIcon';
 
 export const Header: React.FC = () => {
@@ -49,10 +40,6 @@ export const Header: React.FC = () => {
     theme,
     themeMode,
     toggleTheme,
-    isNightTime,
-    isPowerSavingActive,
-    togglePowerSaving,
-    batteryInfo,
     currentUser,
     googleUser,
     isGoogleSignedIn,
@@ -69,14 +56,15 @@ export const Header: React.FC = () => {
     offlineQueueCount,
     isSyncingOffline,
     syncOfflineQueueNow,
-    setIsDataTransferModalOpen
+    isPowerSavingActive
   } = useApp();
 
   const [isPinModalOpen, setIsPinModalOpen] = useState(false);
   const [isNotifDropdownOpen, setIsNotifDropdownOpen] = useState(false);
   const [isBulletinModalOpen, setIsBulletinModalOpen] = useState(false);
   const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
-  const [isMobileToolsOpen, setIsMobileToolsOpen] = useState(false);
+  const [isToolsHubModalOpen, setIsToolsHubModalOpen] = useState(false);
+  const [isSectionsModalOpen, setIsSectionsModalOpen] = useState(false);
 
   const unreadCount = notifications.filter(n => !n.read).length;
   const onlineDevicesCount = devices.filter(d => d.isOnline).length;
@@ -84,19 +72,19 @@ export const Header: React.FC = () => {
 
   const modeBadge = {
     restaurant: {
-      label: language === 'ar' ? 'مطاعم وكافيهات' : 'Restaurant',
+      label: language === 'ar' ? 'مطاعم' : 'Dining',
       icon: UtensilsCrossed,
-      color: 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800'
+      color: 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800'
     },
     wholesale: {
-      label: language === 'ar' ? 'تجارة وجملة' : 'Wholesale',
+      label: language === 'ar' ? 'جملة' : 'Wholesale',
       icon: Building2,
-      color: 'bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border-amber-300 dark:border-amber-800'
+      color: 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
     },
     retail: {
-      label: language === 'ar' ? 'مفرق وتجزئة' : 'Retail',
+      label: language === 'ar' ? 'تجزئة' : 'Retail',
       icon: Store,
-      color: 'bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 border-blue-300 dark:border-blue-800'
+      color: 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800'
     }
   }[businessMode];
 
@@ -104,515 +92,308 @@ export const Header: React.FC = () => {
 
   return (
     <>
-    <header className="app-header h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-2 sm:px-4 flex items-center justify-between sticky top-0 z-30 shadow-xs transition-colors overflow-hidden">
-      {/* Left / Start Section: Brand & Quick POS Action */}
-      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-        <div 
-          onClick={() => setActiveTab('pos')} 
-          className="flex items-center gap-2 cursor-pointer group"
-          id="header-brand-logo"
-          data-longpress-title="نظام الكاشير الرئيسي"
-          data-longpress-desc="العودة المباشرة إلى شاشة نقطة البيع الرئيسية (POS)."
-        >
-          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-500 flex items-center justify-center text-white font-black text-lg sm:text-xl shadow-md shadow-amber-500/20 group-hover:scale-105 transition-transform shrink-0">
-            K
-          </div>
-          <div className="hidden sm:block leading-tight">
-            <h1 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-              <span>{language === 'ar' ? settings.storeNameAr : settings.storeNameEn}</span>
-              <span className="text-[10px] uppercase tracking-wider font-extrabold bg-amber-100 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 px-1.5 py-0.5 rounded-md">
-                POS
-              </span>
-            </h1>
-            <p className="text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400">
-              {language === 'ar' ? 'نظام كاشير متكامل' : 'Modern Retail System'}
-            </p>
-          </div>
-        </div>
-
-        {/* Quick New Sale Button */}
-        <button
-          id="btn-quick-new-sale"
-          onClick={() => setActiveTab('pos')}
-          data-longpress-title="عملية بيع جديدة"
-          data-longpress-desc="الانتقال السريع لشاشة الكاشير للبدء بفاتورة بيع جديدة فوراً."
-          className="hidden md:flex items-center gap-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white text-xs font-bold px-3 py-2 rounded-lg shadow-sm transition-all cursor-pointer"
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>{t('newSale')}</span>
-        </button>
-
-        {/* Operating POS Mode Switcher Pill */}
-        <button
-          id="btn-header-operating-mode"
-          onClick={() => setIsModeModalOpen(true)}
-          data-longpress-title="وضع تشغيل النظام"
-          data-longpress-desc="التبديل الفوري بين وضع التجزئة والمفرق، أو وضع المطاعم والكافيهات، أو وضع البيع بالجملة."
-          className={`flex items-center gap-1 sm:gap-1.5 px-2 py-1.5 sm:px-2.5 sm:py-1.5 rounded-xl border text-xs font-bold transition-all hover:scale-105 active:scale-95 shadow-2xs cursor-pointer ${modeBadge.color}`}
-          title={language === 'ar' ? 'تبديل وضع الكاشير (مطاعم / جملة / مفرق)' : 'Switch POS Mode (Restaurant / Wholesale / Retail)'}
-        >
-          <ModeIcon className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">{modeBadge.label}</span>
-          <SlidersHorizontal className="w-3 h-3 opacity-60 ms-0.5" />
-        </button>
-      </div>
-
-      {/* Center Section: Global Search Bar */}
-      <div className="flex-1 max-w-md mx-1.5 sm:mx-6 min-w-0">
-        <button
-          id="btn-open-global-search"
-          onClick={() => setIsGlobalSearchOpen(true)}
-          data-longpress-title="البحث الشامل (Ctrl+K)"
-          data-longpress-desc="البحث الفوري عن المنتجات، الفواتير، العملاء، السندات، وحركات المخزون."
-          className="w-full flex items-center justify-between gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 text-xs text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200/70 dark:hover:bg-slate-800 rounded-xl border border-slate-200/80 dark:border-slate-700 transition-colors text-start cursor-pointer"
-        >
-          <div className="flex items-center gap-1.5 sm:gap-2 truncate">
-            <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 shrink-0" />
-            <span className="truncate text-[11px] sm:text-xs">{t('globalSearch')}</span>
-          </div>
-          <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono bg-white dark:bg-slate-700 border border-slate-300 dark:border-slate-600 rounded text-slate-600 dark:text-slate-300 shrink-0">
-            Ctrl+K
-          </kbd>
-        </button>
-      </div>
-
-      {/* Right / End Section: Status & Controls */}
-      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-        {/* Currency & Exchange Bulletin Button */}
-        <button
-          id="btn-header-currency-bulletin"
-          onClick={() => setIsBulletinModalOpen(true)}
-          data-longpress-title="نشرة أسعار الصرف"
-          data-longpress-desc="عرض أسعار صرف العملات اللحظية وحاسبة تحويل المبالغ بين العملات المتعددة."
-          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
-          title="نشرة أسعار الصرف وحاسبة العملات"
-        >
-          <Coins className="w-3.5 h-3.5 text-amber-500" />
-          <span className="hidden md:inline">نشرة الصرف</span>
-          <span className="text-[10px] font-black bg-amber-500/20 text-amber-600 dark:text-amber-400 px-1.5 py-0.2 rounded-md font-mono">
-            {settings.currency.symbol}
-          </span>
-        </button>
-
-        {/* Barcode Designer & Label Printer Button */}
-        <button
-          id="btn-header-barcode-printer"
-          onClick={() => setIsBarcodeModalOpen(true)}
-          data-longpress-title="مصمم وطباعة الباركود"
-          data-longpress-desc="تخصيص وتصميم ملصقات الباركود للمنتجات وطباعتها على ورق الملصقات."
-          className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
-          title="مصمم وطباعة ملصقات الباركود للمنتجات"
-        >
-          <BarcodeIcon className="w-3.5 h-3.5 text-amber-500" />
-          <span className="hidden lg:inline">الباركود</span>
-        </button>
-
-        {/* Linked Devices Hub Button */}
-        <button
-          id="btn-header-devices-hub"
-          onClick={() => setActiveTab('devices')}
-          data-longpress-title="مركز ربط الأجهزة"
-          data-longpress-desc="إدارة ومزامنة شاشات المطبخ، شاشات العملاء، ونقاط البيع الإضافية المرتبطة."
-          className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
-          title={language === 'ar' ? 'ربط وإدارة الأجهزة والشاشات' : 'Multi-Device Hub'}
-        >
-          <Radio className="w-3.5 h-3.5 text-amber-500 animate-pulse" />
-          <span className="hidden md:inline">{language === 'ar' ? 'الأجهزة' : 'Devices'}</span>
-          <span className="text-[10px] font-black bg-emerald-500 text-white px-1.5 py-0.2 rounded-full">
-            {onlineDevicesCount}
-          </span>
-        </button>
-
-        {/* Cross-Device Data Transfer Button */}
-        <button
-          id="btn-header-data-transfer"
-          onClick={() => setIsDataTransferModalOpen(true)}
-          data-longpress-title="نقل البيانات بكود الربط"
-          data-longpress-desc="مشاركة الفواتير والبيانات ونقلها بين الأجهزة فورياً بدون كابلات."
-          className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60 text-xs font-bold transition-all cursor-pointer"
-          title="نقل واستلام البيانات بين الأجهزة عبر كود الربط"
-        >
-          <ArrowLeftRight className="w-3.5 h-3.5 text-indigo-500" />
-          <span className="hidden lg:inline">نقل بكود</span>
-        </button>
-
-        {/* Quick Google Drive Backup Hub Button (Admins/Managers Only) */}
-        {canAccessTab('settings', currentUser.role) && (
-          <button
-            id="btn-header-gdrive-sync"
-            onClick={() => setActiveTab('settings')}
-            data-longpress-title="النسخ الاحتياطي السحابي"
-            data-longpress-desc="حفظ نسخة احتياطية من قاعدة البيانات على حساب Google Drive السحابي."
-            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all cursor-pointer"
-            title="النسخ الاحتياطي السحابي (Google Drive)"
+      <header className="app-header h-15 bg-white dark:bg-slate-900 border-b border-slate-200/80 dark:border-slate-800/80 px-2 sm:px-4 flex items-center justify-between sticky top-0 z-30 shadow-xs transition-colors select-none">
+        {/* Start / Left Section: Brand, Mode & Sections Navigator */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          {/* Brand Logo & Store Name */}
+          <div
+            onClick={() => setActiveTab('pos')}
+            className="flex items-center gap-2 cursor-pointer group"
+            id="header-brand-logo"
+            title={language === 'ar' ? 'نقطة البيع الرئيسية (POS)' : 'Main POS'}
           >
-            <Cloud className="w-3.5 h-3.5 text-amber-500" />
-            <span className="hidden xl:inline">{settings.googleDriveConnected ? 'سحابة Google' : 'نسخ Google'}</span>
-          </button>
-        )}
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black text-base shadow-xs group-hover:scale-105 transition-transform shrink-0">
+              K
+            </div>
+            <div className="hidden sm:block leading-tight">
+              <h1 className="text-xs sm:text-sm font-black text-slate-900 dark:text-white flex items-center gap-1">
+                <span>{language === 'ar' ? settings.storeNameAr : settings.storeNameEn}</span>
+              </h1>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium">
+                {language === 'ar' ? 'كاشير ومخازن متكامل' : 'POS & Inventory'}
+              </p>
+            </div>
+          </div>
 
-        {/* Quick Gemini AI Engine Button (Supervisors/Managers Only) */}
-        {canAccessTab('ai', currentUser.role) && (
+          {/* Clean Mode Pill */}
           <button
-            id="btn-header-gemini-ai"
-            onClick={() => setActiveTab('ai')}
-            data-longpress-title="المساعد الذكي (Gemini AI)"
-            data-longpress-desc="تحليل المبيعات واقتراح خطط التسعير والتنبؤ باحتياجات المخزون."
-            className="hidden md:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white text-xs font-black shadow-xs hover:scale-105 active:scale-95 transition-all cursor-pointer"
-            title={language === 'ar' ? 'المساعد الذكي (Gemini AI)' : 'AI Intelligence (Gemini)'}
-          >
-            <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-            <span className="hidden lg:inline">{language === 'ar' ? 'الذكاء الاصطناعي' : 'Gemini AI'}</span>
-          </button>
-        )}
-
-        {/* Mobile Quick Tools Menu Button */}
-        <div className="sm:hidden relative">
-          <button
+            id="btn-header-operating-mode"
             type="button"
-            id="btn-header-mobile-tools"
-            onClick={() => setIsMobileToolsOpen(!isMobileToolsOpen)}
-            data-longpress-title="قائمة الأدوات السريعة"
-            data-longpress-desc="الوصول إلى نشرة أسعار الصرف، الباركود، ونقل البيانات على الهاتف."
-            className="p-1.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors active:scale-90 cursor-pointer"
-            title="أدوات وميزات إضافية"
-            aria-label="أدوات وميزات إضافية"
+            onClick={() => setIsModeModalOpen(true)}
+            className={`flex items-center gap-1 px-2 py-1 rounded-xl border text-[11px] font-bold transition-all hover:opacity-90 active:scale-95 cursor-pointer ${modeBadge.color}`}
+            title={language === 'ar' ? 'تبديل وضع التشغيل' : 'Switch Mode'}
           >
-            <MoreVertical className="w-5 h-5 text-amber-500" />
+            <ModeIcon className="w-3 h-3" />
+            <span className="hidden md:inline">{modeBadge.label}</span>
           </button>
 
-          {isMobileToolsOpen && (
-            <div className="absolute end-0 mt-2 w-64 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 z-50 p-2 space-y-1 animate-in fade-in slide-in-from-top-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsBulletinModalOpen(true);
-                  setIsMobileToolsOpen(false);
-                }}
-                className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold text-start cursor-pointer active:scale-95"
-              >
-                <div className="flex items-center gap-2">
-                  <Coins className="w-4 h-4 text-amber-500" />
-                  <span>نشرة أسعار الصرف</span>
-                </div>
-                <span className="text-[10px] font-mono font-black text-amber-600 dark:text-amber-400">
-                  {settings.currency.symbol}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsDataTransferModalOpen(true);
-                  setIsMobileToolsOpen(false);
-                }}
-                className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold text-start cursor-pointer active:scale-95"
-              >
-                <ArrowLeftRight className="w-4 h-4 text-indigo-500" />
-                <span>نقل البيانات بكود ربط</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('devices');
-                  setIsMobileToolsOpen(false);
-                }}
-                className="w-full flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold text-start cursor-pointer active:scale-95"
-              >
-                <div className="flex items-center gap-2">
-                  <Radio className="w-4 h-4 text-emerald-500" />
-                  <span>الأجهزة والشاشات المتصلة</span>
-                </div>
-                <span className="text-[10px] font-black bg-emerald-500 text-white px-1.5 py-0.2 rounded-full">
-                  {onlineDevicesCount}
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveTab('ai');
-                  setIsMobileToolsOpen(false);
-                }}
-                className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold text-start cursor-pointer active:scale-95"
-              >
-                <Sparkles className="w-4 h-4 text-amber-500" />
-                <span>المساعد الذكي (Gemini AI)</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsBarcodeModalOpen(true);
-                  setIsMobileToolsOpen(false);
-                }}
-                className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-bold text-start cursor-pointer active:scale-95"
-              >
-                <BarcodeIcon className="w-4 h-4 text-slate-500" />
-                <span>مصمم ملصقات الباركود</span>
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* Network Online/Offline & Sync Status */}
-        <div 
-          onClick={() => {
-            if (offlineQueueCount > 0 && isOnline) {
-              syncOfflineQueueNow();
-            }
-          }}
-          data-longpress-title={isOnline ? "حالة الاتصال: متصل بالإنترنت" : "حالة الاتصال: أوفلاين (غير متصل)"}
-          data-longpress-desc={isOnline ? "النظام متصل بالإنترنت وقاعدة البيانات متزامنة. انقر للمزامنة الفورية إن وُجدت عمليات معلقة." : "النظام يعمل أوفلاين بالكامل باستخدام IndexedDB بدون انقطاع. سيتم رفع العمليات تلقائياً فور عودة النت."}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold select-none ${
-            isOnline 
-              ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60'
-              : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60'
-          } ${offlineQueueCount > 0 && isOnline ? 'cursor-pointer hover:bg-emerald-100 dark:hover:bg-emerald-900/60' : ''}`}
-          title={
-            !isOnline 
-              ? 'أوفلاين — يتم تخزين العمليات محلياً في IndexedDB' 
-              : offlineQueueCount > 0 
-                ? `هناك ${offlineQueueCount} عملية معلقة، انقر للمزامنة الفورية مع الخادم` 
-                : t('online')
-          }
-        >
-          {isOnline ? (
-            <>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="hidden lg:inline text-[11px]">{t('online')}</span>
-              {offlineQueueCount > 0 && (
-                <span className="flex items-center gap-1 bg-amber-500 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full ms-1">
-                  <RefreshCw className={`w-2.5 h-2.5 ${isSyncingOffline ? 'animate-spin' : ''}`} />
-                  {offlineQueueCount}
-                </span>
-              )}
-            </>
-          ) : (
-            <>
-              <WifiOff className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-              <span className="hidden lg:inline text-[11px]">{t('offline')} (IndexedDB)</span>
-              {offlineQueueCount > 0 && (
-                <span className="bg-amber-600 text-white text-[10px] font-black px-1.5 py-0.2 rounded-full ms-1">
-                  {offlineQueueCount}
-                </span>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Battery / Eco Power Saving Mode Quick Toggle */}
-        <button
-          id="btn-eco-powersaving-toggle"
-          type="button"
-          onClick={togglePowerSaving}
-          data-longpress-title="وضع توفير الطاقة والبطارية"
-          data-longpress-desc="تعتيم شاشة الكاشير وتقليل تردد تحديثات الواجهة لإطالة عمر البطارية بنسبة تصل إلى 40% في أجهزة الكاشير المحمولة."
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer select-none ${
-            isPowerSavingActive
-              ? 'bg-amber-100/90 dark:bg-amber-950/80 text-amber-900 dark:text-amber-300 border border-amber-300/90 dark:border-amber-700/80 shadow-xs ring-2 ring-amber-400/20'
-              : 'bg-slate-100/80 dark:bg-slate-800/80 hover:bg-slate-200/80 dark:hover:bg-slate-700/80 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
-          }`}
-          title={
-            isPowerSavingActive
-              ? `وضع توفير الطاقة نشط (مستوى التعتيم ${settings.powerSavingDimLevel || 25}%) — انقر لإلغاء التعتيم واستعادة الأداء الكامل`
-              : 'تفعيل وضع توفير الطاقة وتعتيم الشاشة لإطالة عمر بطارية جهاز الكاشير'
-          }
-        >
-          {batteryInfo.supported && (
-            <div className="flex items-center gap-0.5">
-              {batteryInfo.charging ? (
-                <BatteryCharging className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              ) : (
-                <Battery className={`w-3.5 h-3.5 ${batteryInfo.level <= 20 ? 'text-rose-500' : isPowerSavingActive ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500'}`} />
-              )}
-              <span className="text-[10px] font-mono font-bold">{batteryInfo.level}%</span>
-            </div>
-          )}
-          <span className="flex items-center gap-1">
-            <Leaf className={`w-3 h-3 ${isPowerSavingActive ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'}`} />
-            <span className="hidden xl:inline text-[11px]">
-              {isPowerSavingActive ? 'توفير الطاقة' : 'توفير الطاقة'}
-            </span>
-          </span>
-          {isPowerSavingActive && (
-            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
-          )}
-        </button>
-
-        {/* Notifications Dropdown Toggle */}
-        <div className="relative">
+          {/* Professional "الأقسام" (Sections Navigator) Button */}
           <button
-            id="btn-notifications"
-            onClick={() => setIsNotifDropdownOpen(!isNotifDropdownOpen)}
-            data-longpress-title="مركز الإشعارات والتنبيهات"
-            data-longpress-desc="تصفح إشعارات النظام المهمة مثل تنبيهات نقص المخزون وحركات الصندوق والعمليات المعلقة."
-            className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors relative cursor-pointer"
-            title={t('notifications')}
+            id="btn-header-sections-nav"
+            type="button"
+            onClick={() => setIsSectionsModalOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold transition-all active:scale-95 cursor-pointer border border-slate-200/80 dark:border-slate-700/80 shadow-2xs"
+            title={language === 'ar' ? 'استعراض كافة أقسام النظام' : 'Browse All Sections'}
           >
-            <Bell className="w-5 h-5" />
-            {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center ring-2 ring-white dark:ring-slate-900">
-                {unreadCount}
-              </span>
+            <Grid className="w-3.5 h-3.5 text-amber-500" />
+            <span className="hidden sm:inline">{language === 'ar' ? 'الأقسام' : 'Sections'}</span>
+          </button>
+        </div>
+
+        {/* Center: Clean Global Search Input */}
+        <div className="flex-1 max-w-sm mx-2 sm:mx-4 min-w-0">
+          <button
+            id="btn-open-global-search"
+            type="button"
+            onClick={() => setIsGlobalSearchOpen(true)}
+            className="w-full flex items-center justify-between gap-1.5 px-3 py-1.5 text-xs text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200/70 dark:hover:bg-slate-800 rounded-xl border border-slate-200/80 dark:border-slate-700/80 transition-colors text-start cursor-pointer shadow-2xs"
+          >
+            <div className="flex items-center gap-2 truncate">
+              <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              <span className="truncate text-[11px] sm:text-xs">{t('globalSearch')}</span>
+            </div>
+            <kbd className="hidden sm:inline-block px-1.5 py-0.2 text-[10px] font-mono bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded text-slate-500 dark:text-slate-300 shrink-0">
+              Ctrl+K
+            </kbd>
+          </button>
+        </div>
+
+        {/* End / Right Section: Tools Menu, New Sale, Status & User */}
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          {/* Primary "قائمة الأدوات" (Tools Menu) Button */}
+          <button
+            id="btn-header-tools-hub"
+            type="button"
+            onClick={() => setIsToolsHubModalOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-300/80 dark:border-amber-700/80 text-xs font-black transition-all active:scale-95 cursor-pointer shadow-2xs group"
+            title={language === 'ar' ? 'فتح قائمة الأدوات والميزات الذكية' : 'Open Tools & Utilities'}
+          >
+            <Wrench className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 group-hover:rotate-45 transition-transform" />
+            <span>{language === 'ar' ? 'قائمة الأدوات' : 'Tools'}</span>
+            {(onlineDevicesCount > 0 || isPowerSavingActive || offlineQueueCount > 0) && (
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
             )}
           </button>
 
-          {isNotifDropdownOpen && (
-            <div className="absolute end-0 mt-2 w-80 sm:w-96 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
-              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Bell className="w-4 h-4 text-amber-500" />
-                  <h3 className="text-xs font-bold text-slate-900 dark:text-white">{t('notifications')}</h3>
-                  {unreadCount > 0 && (
-                    <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold px-1.5 py-0.5 rounded-full">
-                      {unreadCount}
-                    </span>
+          {/* Quick POS New Sale Button */}
+          <button
+            id="btn-quick-new-sale"
+            type="button"
+            onClick={() => setActiveTab('pos')}
+            className="hidden md:flex items-center gap-1 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 text-xs font-black px-2.5 py-1.5 rounded-xl shadow-xs transition-all cursor-pointer"
+            title={language === 'ar' ? 'فتح شاشة الكاشير للبيع' : 'Open POS Cashier'}
+          >
+            <PlusCircle className="w-3.5 h-3.5" />
+            <span>{t('newSale')}</span>
+          </button>
+
+          {/* Minimalist Network Online/Offline Status */}
+          <div
+            onClick={() => {
+              if (offlineQueueCount > 0 && isOnline) {
+                syncOfflineQueueNow();
+              }
+            }}
+            className={`hidden lg:flex items-center gap-1 px-2 py-1 rounded-xl text-[11px] font-bold select-none ${
+              isOnline
+                ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                : 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800'
+            } ${offlineQueueCount > 0 && isOnline ? 'cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/60' : ''}`}
+            title={
+              !isOnline
+                ? 'أوفلاين — يتم تخزين البيانات محلياً في IndexedDB'
+                : offlineQueueCount > 0
+                ? `${offlineQueueCount} عملية معلقة، انقر للمزامنة الفورية`
+                : 'متصل بالإنترنت'
+            }
+          >
+            {isOnline ? (
+              <>
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span className="text-[10px]">{t('online')}</span>
+                {offlineQueueCount > 0 && (
+                  <span className="flex items-center gap-0.5 bg-amber-500 text-slate-950 text-[9px] font-black px-1 rounded-full ms-0.5">
+                    <RefreshCw className={`w-2.5 h-2.5 ${isSyncingOffline ? 'animate-spin' : ''}`} />
+                    {offlineQueueCount}
+                  </span>
+                )}
+              </>
+            ) : (
+              <>
+                <WifiOff className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                <span className="text-[10px]">{t('offline')}</span>
+              </>
+            )}
+          </div>
+
+          {/* Notifications Dropdown Toggle */}
+          <div className="relative">
+            <button
+              id="btn-notifications"
+              type="button"
+              onClick={() => setIsNotifDropdownOpen(!isNotifDropdownOpen)}
+              className="p-1.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors relative cursor-pointer"
+              title={t('notifications')}
+            >
+              <Bell className="w-4 h-4" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1 right-1 w-3.5 h-3.5 bg-rose-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center">
+                  {unreadCount}
+                </span>
+              )}
+            </button>
+
+            {isNotifDropdownOpen && (
+              <div className="absolute end-0 mt-2 w-80 sm:w-96 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2">
+                <div className="p-3 bg-slate-50 dark:bg-slate-800/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Bell className="w-3.5 h-3.5 text-amber-500" />
+                    <h3 className="text-xs font-bold text-slate-900 dark:text-white">{t('notifications')}</h3>
+                    {unreadCount > 0 && (
+                      <span className="text-[10px] bg-amber-500/10 text-amber-600 dark:text-amber-400 font-bold px-1.5 py-0.5 rounded-full">
+                        {unreadCount}
+                      </span>
+                    )}
+                  </div>
+                  {notifications.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={clearAllNotifications}
+                      className="text-[11px] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                    >
+                      {t('clearAll')}
+                    </button>
                   )}
                 </div>
-                {notifications.length > 0 && (
-                  <button
-                    onClick={clearAllNotifications}
-                    className="text-[11px] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                  >
-                    {t('clearAll')}
-                  </button>
-                )}
-              </div>
 
-              <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
-                {notifications.length === 0 ? (
-                  <div className="p-6 text-center text-slate-400 text-xs">
-                    {t('noNotifications')}
-                  </div>
-                ) : (
-                  notifications.map(n => (
-                    <div
-                      key={n.id}
-                      onClick={() => markNotificationAsRead(n.id)}
-                      className={`p-3 text-xs flex gap-2.5 items-start hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer ${
-                        !n.read ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''
-                      }`}
-                    >
-                      {n.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />}
-                      {n.type === 'warning' && <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />}
-                      {n.type === 'error' && <X className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />}
-                      {n.type === 'info' && <Info className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />}
-                      <div className="flex-1">
-                        <p className="font-bold text-slate-800 dark:text-slate-200">{n.title}</p>
-                        <p className="text-slate-500 dark:text-slate-400 text-[11px] mt-0.5">{n.message}</p>
-                        <span className="text-[9px] text-slate-400 mt-1 block">
-                          {new Date(n.timestamp).toLocaleTimeString(language === 'ar' ? 'ar-SY' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
+                <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+                  {notifications.length === 0 ? (
+                    <div className="p-6 text-center text-slate-400 text-xs">
+                      {t('noNotifications')}
                     </div>
-                  ))
-                )}
+                  ) : (
+                    notifications.map(n => (
+                      <div
+                        key={n.id}
+                        onClick={() => markNotificationAsRead(n.id)}
+                        className={`p-3 text-xs flex gap-2.5 items-start hover:bg-slate-50 dark:hover:bg-slate-800/40 cursor-pointer ${
+                          !n.read ? 'bg-amber-50/50 dark:bg-amber-950/20' : ''
+                        }`}
+                      >
+                        {n.type === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />}
+                        {n.type === 'warning' && <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0 mt-0.5" />}
+                        {n.type === 'error' && <X className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />}
+                        {n.type === 'info' && <Info className="w-3.5 h-3.5 text-blue-500 shrink-0 mt-0.5" />}
+                        <div className="flex-1">
+                          <p className="font-bold text-slate-800 dark:text-slate-200">{n.title}</p>
+                          <p className="text-slate-500 dark:text-slate-400 text-[11px] mt-0.5">{n.message}</p>
+                          <span className="text-[9px] text-slate-400 mt-1 block">
+                            {new Date(n.timestamp).toLocaleTimeString(language === 'ar' ? 'ar-SY' : 'en-US', { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-
-        {/* Theme Toggle (☀️ / 🌙 / ⏰ Auto) */}
-        <button
-          id="btn-theme-toggle"
-          onClick={toggleTheme}
-          data-longpress-title="تبديل مظهر الشاشة"
-          data-longpress-desc="التبديل بين الوضع الليلي الهادئ، والوضع النهاري الفاتح المتناسق، أو التبديل التلقائي الذكي حسب الوقت."
-          className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all relative group cursor-pointer"
-          title={
-            themeMode === 'auto_time'
-              ? `الوضع الليلي التلقائي الذكي نشط (${theme === 'dark' ? 'ليلي مريح للعين' : 'نهاري'}) - انقر للتبديل اليدوي`
-              : theme === 'dark' ? t('lightMode') : t('darkMode')
-          }
-        >
-          {theme === 'dark' ? (
-            <Sun className="w-5 h-5 text-amber-400 group-hover:rotate-45 transition-transform" />
-          ) : (
-            <Moon className="w-5 h-5 text-slate-700 group-hover:-rotate-12 transition-transform" />
-          )}
-          {themeMode === 'auto_time' && (
-            <span
-              className="absolute -top-0.5 -end-0.5 w-2 h-2 rounded-full bg-amber-500 ring-2 ring-white dark:ring-slate-900"
-              title="توقيت تلقائي ذكي"
-            />
-          )}
-        </button>
-
-        {/* Language Switcher */}
-        <button
-          id="btn-lang-toggle"
-          onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
-          data-longpress-title="تغيير لغة العرض"
-          data-longpress-desc="التبديل الفوري بين واجهة اللغة العربية واللغة الإنجليزية في جميع الشاشات والتقارير."
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
-          title={t('language')}
-        >
-          <Languages className="w-3.5 h-3.5 text-amber-500" />
-          <span>{language === 'ar' ? 'EN' : 'عربي'}</span>
-        </button>
-
-        {/* Staff Switch / Profile Card */}
-        <button
-          id="btn-user-profile-shift"
-          onClick={() => setIsPinModalOpen(true)}
-          data-longpress-title="بيانات المستخدم والوردية"
-          data-longpress-desc={`الموظف الحالي: ${currentUser.name} (${roleInfo.labelAr}). ${currentUser.isGoogleAccount || isGoogleSignedIn ? 'مسجل الدخول بحساب Google. ' : ''}انقر للتبديل السريع للمستخدم أو تسجيل الدخول بـ Google.`}
-          className="flex items-center gap-1.5 sm:gap-2 p-1.5 sm:px-2.5 sm:py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 border border-slate-200 dark:border-slate-700 transition-all text-start cursor-pointer shrink-0"
-          title={`${currentUser.name} (${roleInfo.labelAr}) - انقر للتبديل السريع`}
-        >
-          <div className="relative w-7 h-7 rounded-lg overflow-hidden bg-amber-500 text-white flex items-center justify-center font-bold text-xs shrink-0">
-            {currentUser.avatar ? (
-              <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-            ) : (
-              currentUser.name.charAt(0)
-            )}
-            {(currentUser.isGoogleAccount || (isGoogleSignedIn && currentUser.email === googleUser?.email)) && (
-              <span className="absolute -bottom-0.5 -end-0.5 bg-white dark:bg-slate-900 rounded-full p-0.5 shadow-2xs">
-                <GoogleIcon className="w-2.5 h-2.5" />
-              </span>
             )}
           </div>
-          <div className="hidden sm:block leading-tight">
-            <div className="flex items-center gap-1">
-              <p className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[100px]">
-                {currentUser.name}
-              </p>
+
+          {/* Theme Toggle */}
+          <button
+            id="btn-theme-toggle"
+            type="button"
+            onClick={toggleTheme}
+            className="p-1.5 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all relative cursor-pointer"
+            title={theme === 'dark' ? t('lightMode') : t('darkMode')}
+          >
+            {theme === 'dark' ? (
+              <Sun className="w-4 h-4 text-amber-400" />
+            ) : (
+              <Moon className="w-4 h-4 text-slate-700" />
+            )}
+          </button>
+
+          {/* Language Switcher */}
+          <button
+            id="btn-lang-toggle"
+            type="button"
+            onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
+            className="flex items-center gap-1 px-2 py-1 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors cursor-pointer"
+            title={t('language')}
+          >
+            <Languages className="w-3.5 h-3.5 text-amber-500" />
+            <span className="text-[11px]">{language === 'ar' ? 'EN' : 'عربي'}</span>
+          </button>
+
+          {/* Staff Switch / Profile Card */}
+          <button
+            id="btn-user-profile-shift"
+            type="button"
+            onClick={() => setIsPinModalOpen(true)}
+            className="flex items-center gap-1.5 p-1 sm:px-2 sm:py-1 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-amber-950/40 border border-slate-200/80 dark:border-slate-700/80 transition-all text-start cursor-pointer shrink-0 shadow-2xs"
+            title={`${currentUser.name} (${roleInfo.labelAr}) - انقر للتبديل`}
+          >
+            <div className="relative w-6 h-6 rounded-lg overflow-hidden bg-amber-500 text-slate-950 flex items-center justify-center font-black text-xs shrink-0">
+              {currentUser.avatar ? (
+                <img src={currentUser.avatar} alt={currentUser.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+              ) : (
+                currentUser.name.charAt(0)
+              )}
               {(currentUser.isGoogleAccount || (isGoogleSignedIn && currentUser.email === googleUser?.email)) && (
-                <GoogleIcon className="w-2.5 h-2.5 shrink-0" />
+                <span className="absolute -bottom-0.5 -end-0.5 bg-white dark:bg-slate-900 rounded-full p-0.5 shadow-2xs">
+                  <GoogleIcon className="w-2 h-2" />
+                </span>
               )}
             </div>
-            <span className={`text-[9px] font-black px-1.5 py-0.2 rounded border inline-flex items-center gap-0.5 ${roleInfo.badgeColor}`}>
-              <ShieldCheck className="w-2.5 h-2.5" />
-              {roleInfo.badgeLabel}
-            </span>
-          </div>
-        </button>
-      </div>
+            <div className="hidden sm:block leading-tight">
+              <p className="text-xs font-black text-slate-900 dark:text-white truncate max-w-[85px]">
+                {currentUser.name}
+              </p>
+              <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 block">
+                {roleInfo.badgeLabel}
+              </span>
+            </div>
+          </button>
+        </div>
 
-      {/* Fast PIN Switch Modal */}
-      {isPinModalOpen && (
-        <PinSwitchModal isOpen={isPinModalOpen} onClose={() => setIsPinModalOpen(false)} />
-      )}
+        {/* Modals */}
+        {/* Fast PIN Switch Modal */}
+        {isPinModalOpen && (
+          <PinSwitchModal isOpen={isPinModalOpen} onClose={() => setIsPinModalOpen(false)} />
+        )}
 
-      {/* Currency Exchange Bulletin & Converter Modal */}
-      {isBulletinModalOpen && (
-        <ExchangeBulletinModal
-          isOpen={isBulletinModalOpen}
-          onClose={() => setIsBulletinModalOpen(false)}
+        {/* Tools Hub Modal (All Secondary Tools & Utilities) */}
+        <ToolsHubModal
+          isOpen={isToolsHubModalOpen}
+          onClose={() => setIsToolsHubModalOpen(false)}
+          onOpenBulletin={() => setIsBulletinModalOpen(true)}
+          onOpenBarcodeDesigner={() => setIsBarcodeModalOpen(true)}
         />
-      )}
 
-      {/* Barcode Designer & Label Printer Modal */}
-      {isBarcodeModalOpen && (
-        <BarcodeDesignerModal
-          isOpen={isBarcodeModalOpen}
-          onClose={() => setIsBarcodeModalOpen(false)}
+        {/* All Sections Navigator Modal */}
+        <SectionsNavModal
+          isOpen={isSectionsModalOpen}
+          onClose={() => setIsSectionsModalOpen(false)}
         />
-      )}
-    </header>
-    <ExchangeBulletinBar />
+
+        {/* Currency Exchange Bulletin & Converter Modal */}
+        {isBulletinModalOpen && (
+          <ExchangeBulletinModal
+            isOpen={isBulletinModalOpen}
+            onClose={() => setIsBulletinModalOpen(false)}
+          />
+        )}
+
+        {/* Barcode Designer & Label Printer Modal */}
+        {isBarcodeModalOpen && (
+          <BarcodeDesignerModal
+            isOpen={isBarcodeModalOpen}
+            onClose={() => setIsBarcodeModalOpen(false)}
+          />
+        )}
+      </header>
+      <ExchangeBulletinBar />
     </>
   );
 };

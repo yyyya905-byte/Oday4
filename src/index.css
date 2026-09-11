@@ -6,12 +6,12 @@
   :root {
     --font-cairo: 'Cairo', 'Plus Jakarta Sans', system-ui, sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
-    /* Harmonious, calm, and serene light mode palette */
-    --bg-light-canvas: #f6f8fa;
+    /* Eye-friendly, soothing, calm palette */
+    --bg-light-canvas: #f8fafc;
     --bg-light-card: #ffffff;
     --border-light-subtle: #e2e8f0;
-    --text-light-primary: #1e293b;
-    --text-light-secondary: #475569;
+    --text-light-primary: #0f172a;
+    --text-light-secondary: #334155;
     --text-light-muted: #64748b;
     --ps-brightness: 0.85;
   }
@@ -23,9 +23,10 @@
     background-color: var(--bg-light-canvas);
     color: var(--text-light-primary);
     transition: background-color 0.25s ease, color 0.25s ease;
+    letter-spacing: -0.01em;
   }
 
-  /* Harmonious, calm, and serene light mode palette */
+  /* Harmonious, eye-friendly light mode palette */
   :root:not(.dark) {
     color-scheme: light;
   }
@@ -39,6 +40,10 @@
   }
 
   :root:not(.dark) .text-slate-900 {
+    color: #0f172a;
+  }
+
+  :root:not(.dark) .text-slate-800 {
     color: #1e293b;
   }
 
@@ -65,19 +70,19 @@
   }
 
   :root:not(.dark) .shadow-sm {
-    box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.04);
+    box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), 0 1px 2px -1px rgba(15, 23, 42, 0.03);
   }
 
   :root:not(.dark) .shadow-md {
-    box-shadow: 0 4px 8px -1px rgba(15, 23, 42, 0.05), 0 2px 4px -2px rgba(15, 23, 42, 0.03);
+    box-shadow: 0 4px 6px -1px rgba(15, 23, 42, 0.05), 0 2px 4px -2px rgba(15, 23, 42, 0.03);
   }
 
   /* Soft harmonious focus state in light mode */
   :root:not(.dark) input:focus,
   :root:not(.dark) select:focus,
   :root:not(.dark) textarea:focus {
-    border-color: #f59e0b;
-    box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.12);
+    border-color: #d97706;
+    box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12);
   }
 
   /* Calm alternating table row highlights */
@@ -85,9 +90,22 @@
     background-color: #f8fafc;
   }
 
+  /* Eye-friendly dark mode (deep slate navy, not stark black) */
   .dark body {
-    background-color: #020617;
-    color: #f8fafc;
+    background-color: #0b0f19;
+    color: #f1f5f9;
+  }
+
+  .dark .bg-slate-900 {
+    background-color: #111827;
+  }
+
+  .dark .bg-slate-950 {
+    background-color: #0b0f19;
+  }
+
+  .dark .border-slate-800 {
+    border-color: #1e293b;
   }
 
   input, textarea, [contenteditable="true"] {

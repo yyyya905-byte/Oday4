@@ -122,6 +122,18 @@ export const PrintSettingsPanel: React.FC = () => {
     enableAutoCutter: settings.enableAutoCutter ?? true,
     enableCashDrawerKick: settings.enableCashDrawerKick ?? false,
     soundOnPrint: settings.soundOnPrint ?? true,
+    // Custom Receipt Template & Visual Styling
+    receiptTemplateStyle: settings.receiptTemplateStyle || 'modern',
+    receiptFontFamily: settings.receiptFontFamily || 'default',
+    receiptShowLogo: settings.receiptShowLogo ?? settings.printStoreLogo ?? true,
+    receiptShowTaxNumber: settings.receiptShowTaxNumber ?? settings.printTaxDetails ?? true,
+    receiptShowCashierName: settings.receiptShowCashierName ?? settings.printCashierDetails ?? true,
+    receiptShowCustomerInfo: settings.receiptShowCustomerInfo ?? true,
+    receiptShowBarcode: settings.receiptShowBarcode ?? settings.printBarcodeOnReceipt ?? true,
+    receiptShowQrCode: settings.receiptShowQrCode ?? true,
+    receiptShowItemCount: settings.receiptShowItemCount ?? true,
+    receiptShowReturnPolicy: settings.receiptShowReturnPolicy ?? true,
+    receiptReturnPolicyDays: settings.receiptReturnPolicyDays ?? 3,
     // Custom Receipt Thermal Margins & Preview Controls
     previewReceiptBeforePrint: settings.previewReceiptBeforePrint ?? true,
     receiptTopMarginMm: settings.receiptTopMarginMm ?? 3,
@@ -724,6 +736,175 @@ export const PrintSettingsPanel: React.FC = () => {
         </div>
       </div>
 
+      {/* SECTION 2.5: Receipt Template Style & Customization (تخصيص شكل وتصميم الفاتورة) */}
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-6">
+        <div className="border-b border-slate-100 dark:border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <span className="p-1.5 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+              <Sparkles className="w-4 h-4" />
+            </span>
+            <h3 className="text-sm font-black text-slate-900 dark:text-white">
+              تخصيص شكل وقالب الفاتورة (Receipt Template & Visual Design)
+            </h3>
+          </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+            اختر نمط الفاتورة المفضل لديك، نوع الخط، وتحكم بالعناصر الظاهرة مثل الشعار، الرقم الضريبي، اسم الكاشير، الباركود، ورمز QR.
+          </p>
+        </div>
+
+        {/* 1. Template Style Cards */}
+        <div className="space-y-2">
+          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+            نمط وقالب الفاتورة المعتمد:
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              {
+                id: 'modern',
+                title: 'عصري (Modern)',
+                badge: 'الأحدث',
+                desc: 'تصميم أنيق مع إبراز الإجمالي في صندوق مميز وفواصل دقيقة ناعمة.'
+              },
+              {
+                id: 'classic',
+                title: 'كلاسيكي (Classic)',
+                badge: 'تقليدي POS',
+                desc: 'النمط التقليدي المعتمد مع خطوط مزدوجة كلاسيكية وتنسيق هادئ.'
+              },
+              {
+                id: 'minimal',
+                title: 'مبسط (Minimal)',
+                badge: 'موفر للورق',
+                desc: 'تصميم مضغوط جداً يقلل استهلاك الورق إلى أقصى درجة.'
+              },
+              {
+                id: 'thermal_bold',
+                title: 'حراري عريض (Thermal Bold)',
+                badge: 'طابعات سريعة',
+                desc: 'خطوط عريضة داكنة شديدة الوضوح للطابعات الحرارية القديمة أو السريعة.'
+              }
+            ].map(tpl => {
+              const isSelected = formData.receiptTemplateStyle === tpl.id;
+              return (
+                <button
+                  key={tpl.id}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, receiptTemplateStyle: tpl.id as any })}
+                  className={`p-3.5 rounded-2xl border text-start transition-all cursor-pointer flex flex-col justify-between ${
+                    isSelected
+                      ? 'border-amber-500 bg-amber-500/10 dark:bg-amber-500/15 ring-2 ring-amber-500/30 shadow-xs'
+                      : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800/70'
+                  }`}
+                >
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="font-bold text-xs text-slate-900 dark:text-white">{tpl.title}</span>
+                      <span className="text-[9px] px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold">
+                        {tpl.badge}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                      {tpl.desc}
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* 2. Font & Typography Settings */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              نوع خط الفاتورة (Receipt Font Family):
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { id: 'default', label: 'الافتراضي (System)' },
+                { id: 'cairo', label: 'خط القاهرة (Cairo)' },
+                { id: 'tajawal', label: 'خط تجوال (Tajawal)' },
+                { id: 'mono', label: 'رقمي مونو (Mono POS)' }
+              ].map(font => (
+                <button
+                  key={font.id}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, receiptFontFamily: font.id as any })}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold border transition-all text-center ${
+                    formData.receiptFontFamily === font.id
+                      ? 'border-amber-500 bg-amber-500/15 text-amber-800 dark:text-amber-300 ring-1 ring-amber-500/40'
+                      : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800'
+                  }`}
+                >
+                  {font.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              مهلة سياسة الاستبدال والاسترجاع (أيام):
+            </label>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={0}
+                max={90}
+                value={formData.receiptReturnPolicyDays}
+                onChange={e => setFormData({ ...formData, receiptReturnPolicyDays: Math.max(0, parseInt(e.target.value) || 0) })}
+                className="w-24 text-center font-mono font-bold text-sm py-2 px-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white"
+              />
+              <span className="text-xs text-slate-500 dark:text-slate-400">
+                أيام مسموحة للزبون لإرجاع البضاعة مع أصل الفاتورة
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* 3. Elements Visibility Toggles */}
+        <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+          <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+            العناصر المرئية على إيصال الفاتورة (Receipt Elements Visibility):
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              { key: 'receiptShowLogo', label: 'اسم وشعار المتجر', desc: 'إظهار ترويسة المتجر واسمه بالعربي/الإنجليزي' },
+              { key: 'receiptShowTaxNumber', label: 'الرقم الضريبي', desc: 'إظهار الرقم الضريبي والسجل التجاري' },
+              { key: 'receiptShowCashierName', label: 'اسم الكاشير', desc: 'إظهار اسم الموظف أو المستخدم المحاسب' },
+              { key: 'receiptShowCustomerInfo', label: 'بيانات العميل', desc: 'إظهار اسم العميل وكوده ورصيد النقاط' },
+              { key: 'receiptShowBarcode', label: 'باركود الفاتورة 1D', desc: 'باركود خطي لقراءة رقم الفاتورة بجهاز الماسح' },
+              { key: 'receiptShowQrCode', label: 'رمز الاستجابة السريعة QR', desc: 'كود QR للتحقق الرقمي من الفاتورة' },
+              { key: 'receiptShowItemCount', label: 'إجمالي القطع والأصناف', desc: 'ملخص عدد الأصناف وإجمالي القطع بالفاتورة' },
+              { key: 'receiptShowReturnPolicy', label: 'شروط وسياسة الإرجاع', desc: 'إظهار عبارة الاستبدال وعدد الأيام المسموح بها' },
+            ].map(item => {
+              const checked = (formData as any)[item.key] ?? true;
+              return (
+                <label
+                  key={item.key}
+                  className="p-3 rounded-2xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 flex items-start justify-between gap-2.5 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800/70 transition-colors"
+                >
+                  <div>
+                    <span className="text-xs font-bold text-slate-900 dark:text-white block">
+                      {item.label}
+                    </span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400 block mt-0.5">
+                      {item.desc}
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={e => setFormData({ ...formData, [item.key]: e.target.checked })}
+                    className="w-4 h-4 text-amber-600 rounded border-slate-300 focus:ring-amber-500 shrink-0 mt-0.5"
+                  />
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
       {/* SECTION 3: Thermal Receipt Margins & Pre-Print Preview (ضبط هوامش الفاتورة ومعاينة ما قبل الطباعة) */}
       <div className="bg-white dark:bg-slate-900 p-5 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs space-y-6">
         {/* Section Header */}
@@ -1139,7 +1320,11 @@ export const PrintSettingsPanel: React.FC = () => {
             {/* Virtual Thermal Receipt Simulation Roll */}
             <div className="w-full flex justify-center overflow-x-auto py-2">
               <div
-                className="bg-white text-black shadow-lg rounded-sm relative transition-all border border-slate-300 select-none"
+                className={`bg-white text-black shadow-lg rounded-sm relative transition-all border border-slate-300 select-none ${
+                  formData.receiptFontFamily === 'cairo' ? 'font-[Cairo,sans-serif]' :
+                  formData.receiptFontFamily === 'tajawal' ? 'font-[Tajawal,sans-serif]' :
+                  formData.receiptFontFamily === 'mono' ? 'font-mono' : 'font-sans'
+                } ${formData.receiptTemplateStyle === 'thermal_bold' ? 'font-black' : ''}`}
                 style={{
                   width: `${formData.printPaperSize === '58mm' ? 52 : 76}mm`,
                   maxWidth: '100%',
@@ -1166,13 +1351,27 @@ export const PrintSettingsPanel: React.FC = () => {
                 )}
 
                 {/* Header */}
-                <div className="border-b border-dashed border-slate-400 pb-2 mb-2 text-center">
-                  {formData.printStoreLogo && (
-                    <div className="font-black text-sm">{settings.storeNameAr}</div>
+                <div className={`pb-2 mb-2 text-center ${
+                  formData.receiptTemplateStyle === 'classic' ? 'border-b-2 border-double border-black' :
+                  formData.receiptTemplateStyle === 'thermal_bold' ? 'border-b-2 border-black' :
+                  formData.receiptTemplateStyle === 'minimal' ? 'border-b border-slate-300' :
+                  'border-b border-dashed border-slate-400'
+                }`}>
+                  {formData.receiptShowLogo && (
+                    <div className={`font-black tracking-tight ${
+                      formData.receiptTemplateStyle === 'thermal_bold' ? 'text-base font-black uppercase' :
+                      formData.receiptTemplateStyle === 'classic' ? 'text-sm font-bold tracking-wider' :
+                      'text-sm'
+                    }`}>
+                      {settings.storeNameAr || 'كاشير كيان'}
+                    </div>
                   )}
                   <div className="text-[9px] text-slate-600">{settings.storeNameEn}</div>
                   <div className="text-[10px] text-slate-700">{settings.address}</div>
                   <div className="text-[9.5px] text-slate-600 font-mono">هاتف: {settings.phone}</div>
+                  {formData.receiptShowTaxNumber && settings.taxNumber && (
+                    <div className="text-[9px] text-slate-600 font-mono">الرقم الضريبي: {settings.taxNumber}</div>
+                  )}
                 </div>
 
                 {formData.receiptHeader && (
@@ -1182,7 +1381,11 @@ export const PrintSettingsPanel: React.FC = () => {
                 )}
 
                 {/* Meta */}
-                <div className="text-[10px] space-y-0.5 border-b border-dashed border-slate-400 pb-1.5 mb-1.5 text-start font-mono">
+                <div className={`text-[10px] space-y-0.5 pb-1.5 mb-1.5 text-start font-mono ${
+                  formData.receiptTemplateStyle === 'classic' ? 'border-b-2 border-double border-black' :
+                  formData.receiptTemplateStyle === 'thermal_bold' ? 'border-b-2 border-black font-bold' :
+                  'border-b border-dashed border-slate-400'
+                }`}>
                   <div className="flex justify-between">
                     <span>رقم الفاتورة:</span>
                     <span className="font-bold">INV-2026-TEST</span>
@@ -1191,10 +1394,16 @@ export const PrintSettingsPanel: React.FC = () => {
                     <span>التاريخ:</span>
                     <span>{new Date().toLocaleDateString('ar-SY')}</span>
                   </div>
-                  {formData.printCashierDetails && (
+                  {formData.receiptShowCashierName && (
                     <div className="flex justify-between">
                       <span>الكاشير:</span>
                       <span>كاشير تجريبي</span>
+                    </div>
+                  )}
+                  {formData.receiptShowCustomerInfo && (
+                    <div className="flex justify-between">
+                      <span>العميل:</span>
+                      <span>محمد السعيد (CUST-001)</span>
                     </div>
                   )}
                 </div>
@@ -1202,13 +1411,19 @@ export const PrintSettingsPanel: React.FC = () => {
                 {/* Items */}
                 <table className="w-full text-[10px] mb-2 text-start">
                   <thead>
-                    <tr className="border-b border-black text-black">
+                    <tr className={`${
+                      formData.receiptTemplateStyle === 'classic' ? 'border-b-2 border-t-2 border-black text-black' :
+                      formData.receiptTemplateStyle === 'thermal_bold' ? 'border-b-2 border-black text-black font-black bg-slate-100' :
+                      'border-b border-black text-black'
+                    }`}>
                       <th className="text-start py-0.5">الصنف</th>
                       <th className="text-center py-0.5">الكمية</th>
                       <th className="text-end py-0.5">المجموع</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-dashed divide-slate-200 font-mono">
+                  <tbody className={`divide-y ${
+                    formData.receiptTemplateStyle === 'thermal_bold' ? 'divide-black' : 'divide-dashed divide-slate-200'
+                  } font-mono`}>
                     <tr>
                       <td className="py-0.5 font-sans font-medium">{sampleProduct.nameAr}</td>
                       <td className="text-center py-0.5">2</td>
@@ -1222,16 +1437,33 @@ export const PrintSettingsPanel: React.FC = () => {
                   </tbody>
                 </table>
 
+                {/* Items Count Summary */}
+                {formData.receiptShowItemCount && (
+                  <div className="flex justify-between text-[9px] text-slate-500 border-t border-dashed border-slate-200 py-1 font-mono">
+                    <span>عدد الأصناف: 2</span>
+                    <span>إجمالي القطع: 3</span>
+                  </div>
+                )}
+
                 {/* Totals */}
-                <div className="border-t border-dashed border-black pt-1.5 mb-2 font-mono text-[10px]">
-                  <div className="flex justify-between font-bold text-xs border-y border-black py-1 my-1">
+                <div className={`pt-1.5 mb-2 font-mono text-[10px] ${
+                  formData.receiptTemplateStyle === 'classic' ? 'border-double border-t-2 border-black' :
+                  formData.receiptTemplateStyle === 'thermal_bold' ? 'border-black border-t-2 font-bold' :
+                  'border-t border-dashed border-black'
+                }`}>
+                  <div className={`flex justify-between py-1 my-1 ${
+                    formData.receiptTemplateStyle === 'modern' ? 'bg-slate-900 text-white px-1.5 rounded font-black text-xs' :
+                    formData.receiptTemplateStyle === 'classic' ? 'border-y-2 border-double border-black font-black text-xs' :
+                    formData.receiptTemplateStyle === 'thermal_bold' ? 'border-y-2 border-black font-black text-xs' :
+                    'border-y border-black font-bold text-xs'
+                  }`}>
                     <span className="font-sans">الإجمالي النهائي:</span>
                     <span>{(sampleProduct.price * 2 + 3000).toLocaleString()} {settings.currency.symbol}</span>
                   </div>
                 </div>
 
                 {/* Barcode */}
-                {formData.printBarcodeOnReceipt && (
+                {formData.receiptShowBarcode && (
                   <div className="my-2 flex flex-col items-center justify-center">
                     <div
                       className="max-w-full overflow-hidden flex justify-center"
@@ -1247,6 +1479,23 @@ export const PrintSettingsPanel: React.FC = () => {
                       }}
                     />
                     <span className="text-[8px] text-slate-400 font-mono mt-0.5">باركود استرجاع الفاتورة</span>
+                  </div>
+                )}
+
+                {/* QR Code */}
+                {formData.receiptShowQrCode && (
+                  <div className="my-1.5 flex flex-col items-center justify-center">
+                    <div className="w-14 h-14 border border-slate-300 p-1 bg-white flex items-center justify-center rounded">
+                      <QrCode className="w-10 h-10 text-slate-900" />
+                    </div>
+                    <span className="text-[7.5px] text-slate-400 font-mono mt-0.5">مسح للتحقق الرقمي</span>
+                  </div>
+                )}
+
+                {/* Return Policy */}
+                {formData.receiptShowReturnPolicy && (
+                  <div className="text-[8.5px] text-slate-600 border-t border-dashed border-slate-300 pt-1 my-1 text-center">
+                    البضاعة المباعة ترد وتستبدل خلال {formData.receiptReturnPolicyDays || 3} أيام مع أصل الفاتورة
                   </div>
                 )}
 

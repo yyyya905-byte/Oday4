@@ -120,6 +120,25 @@ export const PrintableReceiptModal: React.FC<PrintableReceiptModalProps> = ({
   const fontScale = settings.receiptFontScale || 'normal';
   const fontSizeClass = fontScale === 'compact' ? 'text-[10px]' : fontScale === 'large' ? 'text-[13px]' : 'text-[11.5px]';
 
+  // Derived template styles & custom visibility toggles
+  const templateStyle = settings.receiptTemplateStyle || 'modern';
+  const fontFamilyClass = 
+    settings.receiptFontFamily === 'cairo' ? 'font-[Cairo,sans-serif]' :
+    settings.receiptFontFamily === 'tajawal' ? 'font-[Tajawal,sans-serif]' :
+    settings.receiptFontFamily === 'mono' ? 'font-mono' : 'font-sans';
+
+  const showLogo = settings.receiptShowLogo ?? settings.printStoreLogo ?? true;
+  const showTax = settings.receiptShowTaxNumber ?? settings.printTaxDetails ?? true;
+  const showCashier = settings.receiptShowCashierName ?? settings.printCashierDetails ?? true;
+  const showCustomer = settings.receiptShowCustomerInfo ?? true;
+  const showBarcode = settings.receiptShowBarcode ?? settings.printBarcodeOnReceipt ?? true;
+  const showQr = settings.receiptShowQrCode ?? true;
+  const showItemCount = settings.receiptShowItemCount ?? true;
+  const showReturnPolicy = settings.receiptShowReturnPolicy ?? true;
+  const returnPolicyDays = settings.receiptReturnPolicyDays ?? 3;
+
+  const totalQuantity = sale.items.reduce((acc, it) => acc + (it.quantity || 0), 0);
+
   return (
     <DraggableModalWrapper
       isOpen={isOpen}
@@ -225,7 +244,9 @@ export const PrintableReceiptModal: React.FC<PrintableReceiptModalProps> = ({
         <div className="p-4 sm:p-6 overflow-y-auto flex-1 bg-slate-100/80 dark:bg-slate-950/60 flex justify-center">
           <div
             id="printable-receipt"
-            className={`bg-white text-black font-sans shadow-md text-center transition-transform origin-top select-none print:shadow-none print:transform-none ${fontSizeClass}`}
+            className={`bg-white text-black shadow-md text-center transition-transform origin-top select-none print:shadow-none print:transform-none ${fontFamilyClass} ${fontSizeClass} ${
+              templateStyle === 'thermal_bold' ? 'font-black' : ''
+            }`}
             style={{
               width: `${paperWidthMm}mm`,
               maxWidth: '100%',
@@ -239,9 +260,20 @@ export const PrintableReceiptModal: React.FC<PrintableReceiptModalProps> = ({
             }}
           >
             {/* Receipt Store Branding */}
-            <div className="border-b border-dashed border-slate-300 pb-2.5 mb-2.5">
-              {settings.printStoreLogo && (
-                <h2 className="text-base sm:text-lg font-black tracking-tight">{settings.storeNameAr}</h2>
+            <div className={`pb-2.5 mb-2.5 ${
+              templateStyle === 'classic' ? 'border-b-2 border-double border-black' :
+              templateStyle === 'thermal_bold' ? 'border-b-2 border-black' :
+              templateStyle === 'minimal' ? 'border-b border-slate-300' :
+              'border-b border-dashed border-slate-300'
+            }`}>
+              {showLogo && (
+                <h2 className={`tracking-tight ${
+                  templateStyle === 'thermal_bold' ? 'text-lg sm:text-xl font-black uppercase' :
+                  templateStyle === 'classic' ? 'text-base sm:text-lg font-bold tracking-wider' :
+                  'text-base sm:text-lg font-black'
+                }`}>
+                  {settings.storeNameAr || 'كاشير كيان'}
+                </h2>
               )}
               {settings.storeNameEn && (
                 <p className="text-[10px] text-slate-600 font-bold uppercase tracking-wider">{settings.storeNameEn}</p>
@@ -252,7 +284,7 @@ export const PrintableReceiptModal: React.FC<PrintableReceiptModalProps> = ({
               {settings.phone && (
                 <p className="text-[10px] text-slate-600 font-mono">هاتف: {settings.phone}</p>
               )}
-              {settings.printTaxDetails && settings.taxNumber && (
+              {showTax && settings.taxNumber && (
                 <p className="text-[10px] text-slate-600 font-mono">الرقم الضريبي: {settings.taxNumber}</p>
               )}
             </div>
@@ -265,7 +297,11 @@ export const PrintableReceiptModal: React.FC<PrintableReceiptModalProps> = ({
             )}
 
             {/* Invoice Meta */}
-            <div className="text-[10.5px] text-slate-700 text-start space-y-0.5 border-b border-dashed border-slate-300 pb-2 mb-2">
+            <div className={`text-[10.5px] text-slate-700 text-start space-y-0.5 pb-2 mb-2 ${
+              templateStyle === 'classic' ? 'border-b-2 border-double border-black' :
+              templateStyle === 'thermal_bold' ? 'border-b-2 border-black font-bold' :
+              'border-b border-dashed border-slate-300'
+            }`}>
               <div className="flex justify-between">
                 <span>رقم الفاتورة:</span>
                 <span className="font-mono font-bold">{sale.invoiceNumber}</span>
@@ -274,7 +310,7 @@ export const PrintableReceiptModal: React.FC<PrintableReceiptModalProps> = ({
                 <span>التاريخ والوقت:</span>
                 <span className="font-mono">{new Date(sale.createdAt).toLocaleString(language === 'ar' ? 'ar-SY' : 'en-US')}</span>
               </div>
-              {settings.printCashierDetails && (
+              {showCashier && (
                 <div className="flex justify-between">
                   <span>الكاشير:</span>
                   <span className="font-semibold">{sale.cashierName}</span>
@@ -299,10 +335,10 @@ export const PrintableReceiptModal: React.FC<PrintableReceiptModalProps> = ({
                 </div>
               )}
 
-              {sale.customerName && (
+              {showCustomer && sale.customerName && (
                 <div className="flex justify-between">
                   <span>العميل:</span>
-                  <span className="font-bold">{sale.customerName} ({sale.customerCode})</span>
+                  <span className="font-bold">{sale.customerName} {sale.customerCode ? `(${sale.customerCode})` : ''}</span>
                 </div>
               )}
             </div>
@@ -310,17 +346,23 @@ export const PrintableReceiptModal: React.FC<PrintableReceiptModalProps> = ({
             {/* Receipt Items Table */}
             <table className="w-full text-[10.5px] my-2 text-start border-collapse">
               <thead>
-                <tr className="border-b border-black text-black">
+                <tr className={`${
+                  templateStyle === 'classic' ? 'border-b-2 border-t-2 border-black text-black' :
+                  templateStyle === 'thermal_bold' ? 'border-b-2 border-black text-black font-black bg-slate-100' :
+                  'border-b border-black text-black'
+                }`}>
                   <th className="py-1 text-start">الصنف</th>
                   <th className="py-1 text-center">الكمية</th>
                   <th className="py-1 text-end">السعر</th>
                   <th className="py-1 text-end">الإجمالي</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-dashed divide-slate-200">
+              <tbody className={`divide-y ${
+                templateStyle === 'thermal_bold' ? 'divide-black' : 'divide-dashed divide-slate-200'
+              }`}>
                 {sale.items.map((it, idx) => (
                   <tr key={idx} className="py-1">
-                    <td className="py-1 font-medium">
+                    <td className="py-1 font-medium text-start">
                       <div>{it.productNameAr}</div>
                       {it.wholesaleUnit && (
                         <div className="text-[9px] text-amber-700 font-bold">({it.wholesaleUnit})</div>
@@ -337,8 +379,20 @@ export const PrintableReceiptModal: React.FC<PrintableReceiptModalProps> = ({
               </tbody>
             </table>
 
+            {/* Items and pieces summary */}
+            {showItemCount && (
+              <div className="flex justify-between text-[9.5px] text-slate-500 border-t border-dashed border-slate-200 py-1 font-mono">
+                <span>عدد الأصناف: {sale.items.length}</span>
+                <span>إجمالي القطع: {totalQuantity}</span>
+              </div>
+            )}
+
             {/* Calculations & Totals */}
-            <div className="border-t border-dashed border-black pt-2 text-[10.5px] space-y-1">
+            <div className={`border-t pt-2 text-[10.5px] space-y-1 ${
+              templateStyle === 'classic' ? 'border-double border-t-2 border-black' :
+              templateStyle === 'thermal_bold' ? 'border-black border-t-2 font-bold' :
+              'border-dashed border-black'
+            }`}>
               <div className="flex justify-between text-slate-700">
                 <span>المجموع الفرعي:</span>
                 <span className="font-mono">{sale.subtotal.toLocaleString()} {settings.currency.symbol}</span>
@@ -351,14 +405,19 @@ export const PrintableReceiptModal: React.FC<PrintableReceiptModalProps> = ({
                 </div>
               )}
 
-              {sale.taxTotal > 0 && settings.printTaxDetails && (
+              {sale.taxTotal > 0 && showTax && (
                 <div className="flex justify-between text-slate-700">
                   <span>الضريبة:</span>
                   <span className="font-mono">+{sale.taxTotal.toLocaleString()} {settings.currency.symbol}</span>
                 </div>
               )}
 
-              <div className="flex justify-between text-sm sm:text-base font-black border-t-2 border-b-2 border-black py-1.5 my-1.5">
+              <div className={`flex justify-between py-1.5 my-1.5 ${
+                templateStyle === 'modern' ? 'bg-slate-900 text-white px-2 rounded-lg font-black text-sm sm:text-base' :
+                templateStyle === 'classic' ? 'border-t-2 border-b-2 border-double border-black font-black text-sm sm:text-base' :
+                templateStyle === 'thermal_bold' ? 'border-t-2 border-b-2 border-black font-black text-base' :
+                'border-t-2 border-b-2 border-black font-black text-sm sm:text-base'
+              }`}>
                 <span>الإجمالي النهائي:</span>
                 <span className="font-mono">{sale.total.toLocaleString()} {settings.currency.symbol}</span>
               </div>
@@ -425,7 +484,7 @@ export const PrintableReceiptModal: React.FC<PrintableReceiptModalProps> = ({
             )}
 
             {/* 1D Invoice Barcode for Return Scanners & Cashiers */}
-            {settings.printBarcodeOnReceipt && (
+            {showBarcode && (
               <div className="my-2.5 flex flex-col items-center justify-center">
                 <div
                   className="max-w-full overflow-hidden flex justify-center"
@@ -448,10 +507,17 @@ export const PrintableReceiptModal: React.FC<PrintableReceiptModalProps> = ({
             )}
 
             {/* QR Code */}
-            {qrCodeDataUrl && (
+            {showQr && qrCodeDataUrl && (
               <div className="my-2 flex flex-col items-center justify-center">
                 <img src={qrCodeDataUrl} alt="Receipt QR" className="w-20 h-20" />
                 <span className="text-[8.5px] text-slate-400 font-mono mt-0.5">مسح للتحقق الرقمي من الفاتورة</span>
+              </div>
+            )}
+
+            {/* Return Policy */}
+            {showReturnPolicy && (
+              <div className="text-[9px] text-slate-600 border-t border-dashed border-slate-300 pt-1.5 my-1">
+                البضاعة المباعة ترد وتستبدل خلال {returnPolicyDays} أيام بإحضار أصل الفاتورة بحالتها الأصلية
               </div>
             )}
 

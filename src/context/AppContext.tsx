@@ -33,7 +33,8 @@ import {
   CurrencyConfig,
   ExchangeRateBulletin,
   ThemeMode,
-  BatteryInfo
+  BatteryInfo,
+  SavedSyncPartner
 } from '../types';
 import {
   initialSettings,
@@ -287,6 +288,12 @@ interface AppContextType {
   isSyncingOffline: boolean;
   syncOfflineQueueNow: () => Promise<void>;
   refreshOfflineQueueCount: () => Promise<void>;
+
+  // Saved Device & Auto-Sync Engine (مزامنة تلقائية وحفظ الأجهزة)
+  isSyncingWithPartner: boolean;
+  saveSyncPartner: (partner: SavedSyncPartner) => void;
+  removeSyncPartner: () => void;
+  performPartnerSync: (partnerOverride?: SavedSyncPartner) => Promise<{ success: boolean; message: string }>;
 
   // Wholesale Warehouses & Transport Fleet Hub
   wholesaleWarehouses: WholesaleWarehouse[];
@@ -2755,6 +2762,152 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
+  // Saved Device & Auto-Sync Engine (مزامنة تلقائية وحفظ الأجهزة)
+  const [isSyncingWithPartner, setIsSyncingWithPartner] = useState(false);
+
+  const saveSyncPartner = (partner: SavedSyncPartner) => {
+    const updated = {
+      ...settings,
+      savedSyncPartner: partner
+    };
+    updateSettings(updated);
+    notify('تم حفظ الجهاز بنجاح', `تم حفظ "${partner.deviceName}" كجهاز شريك دائم للمزامنة التلقائية.`, 'success');
+  };
+
+  const removeSyncPartner = () => {
+    const updated = {
+      ...settings,
+      savedSyncPartner: undefined
+    };
+    updateSettings(updated);
+    notify('تم إلغاء حفظ الجهاز', 'تمت إزالة الجهاز من قائمة المزامنة التلقائية.', 'info');
+  };
+
+  const performPartnerSync = async (partnerOverride?: SavedSyncPartner): Promise<{ success: boolean; message: string }> => {
+    const partner = partnerOverride || settings.savedSyncPartner;
+    if (!partner || !partner.pairingKey) {
+      return { success: false, message: 'لا يوجد جهاز شريك محفوظ للمزامنة.' };
+    }
+
+    setIsSyncingWithPartner(true);
+    try {
+      // Pull latest state from partner channel
+      const res = await fetch(`/api/devices/partner/pull/${encodeURIComponent(partner.pairingKey)}`);
+      if (!res.ok) {
+        throw new Error('تعذر الوصول لحزمة بيانات الجهاز الشريك. تأكد من أن الجهاز الشريك متصل بالشبكة.');
+      }
+      const resData = await res.json();
+      if (!resData.success || !resData.channel?.data) {
+        throw new Error(resData.error || 'لا توجد بيانات جديدة واردة من الجهاز الشريك.');
+      }
+
+      const { data } = resData.channel;
+      let newSalesCount = 0;
+      let newDocsCount = 0;
+
+      // 1. Sync Sales if enabled
+      if (partner.syncSales && Array.isArray(data.sales) && data.sales.length > 0) {
+        const existingSaleIds = new Set(sales.map(s => s.id));
+        const incomingSales = data.sales.filter((s: any) => !existingSaleIds.has(s.id));
+        if (incomingSales.length > 0) {
+          const mergedSales = [...incomingSales, ...sales];
+          setSalesState(mergedSales);
+          localStorage.setItem(STORAGE_KEYS.SALES, JSON.stringify(mergedSales));
+          newSalesCount = incomingSales.length;
+        }
+      }
+
+      // 2. Sync Documents (Debt transactions, expenses, refunds) if enabled
+      if (partner.syncDocuments) {
+        if (Array.isArray(data.debtTransactions) && data.debtTransactions.length > 0) {
+          const existingDebtIds = new Set(debtTransactions.map(d => d.id));
+          const newDebts = data.debtTransactions.filter((d: any) => !existingDebtIds.has(d.id));
+          if (newDebts.length > 0) {
+            const mergedDebts = [...newDebts, ...debtTransactions];
+            setDebtTransactionsState(mergedDebts);
+            localStorage.setItem(STORAGE_KEYS.DEBT_TRANSACTIONS, JSON.stringify(mergedDebts));
+            newDocsCount += newDebts.length;
+          }
+        }
+        if (Array.isArray(data.expenses) && data.expenses.length > 0) {
+          const existingExpIds = new Set(expenses.map(e => e.id));
+          const newExpenses = data.expenses.filter((e: any) => !existingExpIds.has(e.id));
+          if (newExpenses.length > 0) {
+            const mergedExpenses = [...newExpenses, ...expenses];
+            setExpensesState(mergedExpenses);
+            localStorage.setItem(STORAGE_KEYS.EXPENSES, JSON.stringify(mergedExpenses));
+            newDocsCount += newExpenses.length;
+          }
+        }
+        if (Array.isArray(data.refunds) && data.refunds.length > 0) {
+          const existingRefIds = new Set(refunds.map(r => r.id));
+          const newRefunds = data.refunds.filter((r: any) => !existingRefIds.has(r.id));
+          if (newRefunds.length > 0) {
+            const mergedRefunds = [...newRefunds, ...refunds];
+            setRefundsState(mergedRefunds);
+            localStorage.setItem(STORAGE_KEYS.REFUNDS, JSON.stringify(mergedRefunds));
+            newDocsCount += newRefunds.length;
+          }
+        }
+      }
+
+      // 3. Sync Catalog (products & categories) if enabled
+      if (partner.syncCatalog) {
+        if (Array.isArray(data.products) && data.products.length > 0) {
+          const existingProdIds = new Set(products.map(p => p.id));
+          const newProds = data.products.filter((p: any) => !existingProdIds.has(p.id));
+          if (newProds.length > 0) {
+            const mergedProds = [...products, ...newProds];
+            setProductsState(mergedProds);
+            localStorage.setItem(STORAGE_KEYS.PRODUCTS, JSON.stringify(mergedProds));
+          }
+        }
+        if (Array.isArray(data.categories) && data.categories.length > 0) {
+          const existingCatIds = new Set(categories.map(c => c.id));
+          const newCats = data.categories.filter((c: any) => !existingCatIds.has(c.id));
+          if (newCats.length > 0) {
+            const mergedCats = [...categories, ...newCats];
+            setCategoriesState(mergedCats);
+            localStorage.setItem(STORAGE_KEYS.CATEGORIES, JSON.stringify(mergedCats));
+          }
+        }
+      }
+
+      // Update partner lastSyncedAt timestamp
+      const updatedPartner: SavedSyncPartner = {
+        ...partner,
+        lastSyncedAt: new Date().toISOString()
+      };
+      updateSettings({
+        ...settings,
+        savedSyncPartner: updatedPartner
+      });
+
+      const message = `تمت المزامنة بنجاح مع ${partner.deviceName} (${newSalesCount} مبيعات جديدة، ${newDocsCount} مستندات).`;
+      notify('🔄 تمت المزامنة التلقائية مع الجهاز المحفوظ', message, 'success');
+      return { success: true, message };
+    } catch (err: any) {
+      console.warn('Partner sync error:', err);
+      return { success: false, message: err.message || 'فشلت المزامنة مع الجهاز الشريك' };
+    } finally {
+      setIsSyncingWithPartner(false);
+    }
+  };
+
+  // 4. Auto-Sync on Website Startup (المزامنة التلقائية فور دخول الموقع)
+  useEffect(() => {
+    if (!settings.savedSyncPartner || !settings.savedSyncPartner.autoSyncEnabled || settings.autoSyncOnStartup === false) {
+      return;
+    }
+
+    const startupTimer = setTimeout(() => {
+      console.log('[Auto-Sync Engine] Website launched — initiating background sync with saved partner:', settings.savedSyncPartner?.deviceName);
+      performPartnerSync(settings.savedSyncPartner);
+    }, 1800);
+
+    return () => clearTimeout(startupTimer);
+  }, []);
+
   const [kitchenOrders, setKitchenOrders] = useState<KitchenOrder[]>([
     {
       id: "k-ord-101",
@@ -3366,6 +3519,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         isSyncingOffline,
         syncOfflineQueueNow,
         refreshOfflineQueueCount,
+        isSyncingWithPartner,
+        saveSyncPartner,
+        removeSyncPartner,
+        performPartnerSync,
         wholesaleWarehouses,
         deliveryVehicles,
         vehicleManifests,

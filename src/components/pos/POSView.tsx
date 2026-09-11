@@ -781,38 +781,6 @@ export const POSView: React.FC = () => {
               )}
             </button>
 
-            {/* Quick Invoice Return by Barcode Button */}
-            <button
-              id="btn-pos-invoice-return"
-              type="button"
-              onClick={() => {
-                haptics.buttonPress();
-                setActiveTab('returns');
-              }}
-              data-longpress-title={language === 'ar' ? 'إرجاع فاتورة بمسح الباركود' : 'Return Invoice'}
-              data-longpress-desc={language === 'ar' ? 'الانتقال المباشر لشاشة المرتجعات لإرجاع أصناف الفاتورة واسترداد المبالغ للعميل.' : 'Jump directly to sales returns to refund items by invoice barcode.'}
-              className="flex items-center justify-center gap-1 px-3 min-h-[40px] bg-rose-50/80 dark:bg-rose-950/30 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 text-xs font-bold rounded-xl border border-rose-200 dark:border-rose-800/60 shadow-2xs active:scale-95 transition-all shrink-0 cursor-pointer"
-              title="إرجاع بضاعة عبر مسح باركود الفاتورة الأصلية"
-            >
-              <RotateCcw className="w-4 h-4 text-rose-500" />
-              <span className="hidden xl:inline">إرجاع</span>
-            </button>
-
-            {/* Switch Mode Button */}
-            <button
-              id="btn-switch-business-mode-pos"
-              type="button"
-              onClick={() => {
-                haptics.buttonPress();
-                setIsModeModalOpen(true);
-              }}
-              className="flex items-center gap-1 px-3 min-h-[40px] text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-50 dark:bg-slate-800 hover:bg-amber-50 dark:hover:bg-slate-750 rounded-xl border border-slate-200 dark:border-slate-700 transition-all active:scale-95 cursor-pointer shadow-2xs shrink-0"
-              title={language === 'ar' ? 'تبديل نمط الكاشير (مطاعم / جملة / تجزئة)' : 'Switch POS Mode'}
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-amber-500" />
-              <span className="hidden lg:inline">{language === 'ar' ? 'النمط' : 'Mode'}</span>
-            </button>
-
             {/* Mobile Cart Toggle Button */}
             <button
               id="btn-mobile-cart-top"

@@ -734,12 +734,13 @@ interface ServerDeviceTransfer {
   senderDeviceName: string;
   createdAt: string;
   expiresAt: string;
-  transferType: 'all' | 'products' | 'customers' | 'sales' | 'settings';
+  transferType: 'all' | 'products' | 'customers' | 'sales' | 'documents' | 'settings' | string;
   summary: {
     productsCount: number;
     categoriesCount: number;
     customersCount: number;
     salesCount: number;
+    documentsCount?: number;
     hasSettings: boolean;
   };
   data: any;
@@ -748,6 +749,22 @@ interface ServerDeviceTransfer {
 
 // In-memory cross-device transfer storage
 const activeDeviceTransfers = new Map<string, ServerDeviceTransfer>();
+
+// Persistent Saved Partner Sync Channels (for auto-sync on website startup)
+interface PartnerSyncChannel {
+  channelId: string;
+  senderDeviceName: string;
+  lastUpdated: string;
+  version: number;
+  summary: {
+    productsCount: number;
+    salesCount: number;
+    documentsCount: number;
+    customersCount: number;
+  };
+  data: any;
+}
+const persistentPartnerChannels = new Map<string, PartnerSyncChannel>();
 
 // Set to track committed transaction UUIDs / IDs to guarantee idempotent deduplication
 const committedOfflineMutationIds = new Set<string>();
@@ -926,6 +943,7 @@ app.post("/api/devices/transfer/create", (req, res) => {
         categoriesCount: summary.categoriesCount || (data.categories?.length ?? 0),
         customersCount: summary.customersCount || (data.customers?.length ?? 0),
         salesCount: summary.salesCount || (data.sales?.length ?? 0),
+        documentsCount: summary.documentsCount || ((data.debtTransactions?.length ?? 0) + (data.expenses?.length ?? 0) + (data.refunds?.length ?? 0) + (data.vehicleManifests?.length ?? 0)),
         hasSettings: Boolean(summary.hasSettings || data.settings),
       },
       data,
@@ -942,7 +960,7 @@ app.post("/api/devices/transfer/create", (req, res) => {
       timestamp: now.toISOString(),
     });
 
-    console.log(`[Device Transfer] Data package staged under code: ${code} (${pkg.summary.productsCount} products, ${pkg.summary.customersCount} customers)`);
+    console.log(`[Device Transfer] Data package staged under code: ${code} (${pkg.summary.productsCount} products, ${pkg.summary.salesCount} sales, ${pkg.summary.documentsCount} documents)`);
 
     res.json({
       success: true,
@@ -998,6 +1016,97 @@ app.post("/api/devices/transfer/confirm", (req, res) => {
   res.json({
     success: true,
     message: "تم تأكيد استلام البيانات بنجاح",
+  });
+});
+
+// 5. Persistent Saved Partner Auto-Sync Endpoints (for instant background sync on website startup)
+app.post("/api/devices/partner/push", (req, res) => {
+  try {
+    const { channelId, senderDeviceName, data = {}, summary = {} } = req.body;
+    if (!channelId) {
+      return res.status(400).json({ success: false, error: "معرف القناة أو رمز الربط الدائم مطلوب" });
+    }
+
+    const normChannel = String(channelId).trim().toUpperCase();
+    const existing = persistentPartnerChannels.get(normChannel);
+    const version = (existing?.version || 0) + 1;
+    const now = new Date().toISOString();
+
+    const channelPayload: PartnerSyncChannel = {
+      channelId: normChannel,
+      senderDeviceName: senderDeviceName || "جهاز كاشير رئيسي",
+      lastUpdated: now,
+      version,
+      summary: {
+        productsCount: summary.productsCount ?? (data.products?.length || 0),
+        salesCount: summary.salesCount ?? (data.sales?.length || 0),
+        documentsCount: summary.documentsCount ?? ((data.debtTransactions?.length || 0) + (data.expenses?.length || 0) + (data.refunds?.length || 0)),
+        customersCount: summary.customersCount ?? (data.customers?.length || 0),
+      },
+      data,
+    };
+
+    persistentPartnerChannels.set(normChannel, channelPayload);
+
+    // Broadcast SSE update event
+    broadcastSseEvent('PARTNER_SYNC_UPDATED', {
+      channelId: normChannel,
+      senderDeviceName: channelPayload.senderDeviceName,
+      version,
+      summary: channelPayload.summary,
+      timestamp: now,
+    });
+
+    res.json({
+      success: true,
+      channelId: normChannel,
+      version,
+      lastUpdated: now,
+      summary: channelPayload.summary,
+      message: "تم نشر حزمة المزامنة التلقائية للجهاز الشريك بنجاح",
+    });
+  } catch (error: any) {
+    console.error("[Partner Sync Push Error]:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/api/devices/partner/pull/:channelId", (req, res) => {
+  try {
+    const normChannel = String(req.params.channelId).trim().toUpperCase();
+    const payload = persistentPartnerChannels.get(normChannel);
+
+    if (!payload) {
+      return res.status(404).json({
+        success: false,
+        error: "لم يتم العثور على قناة مزامنة بهذا الرمز. يرجى التأكد من إعداد المزامنة على الجهاز الآخر.",
+      });
+    }
+
+    res.json({
+      success: true,
+      channel: payload,
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+app.get("/api/devices/partner/status/:channelId", (req, res) => {
+  const normChannel = String(req.params.channelId).trim().toUpperCase();
+  const payload = persistentPartnerChannels.get(normChannel);
+
+  if (!payload) {
+    return res.json({ success: false, active: false });
+  }
+
+  res.json({
+    success: true,
+    active: true,
+    version: payload.version,
+    lastUpdated: payload.lastUpdated,
+    summary: payload.summary,
+    senderDeviceName: payload.senderDeviceName,
   });
 });
 

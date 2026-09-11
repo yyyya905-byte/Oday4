@@ -9,7 +9,17 @@
  * - Cross-device data transfer packages
  */
 
-import { Product, Category, Customer, Sale, StoreSettings } from '../types';
+import { 
+  Product, 
+  Category, 
+  Customer, 
+  Sale, 
+  StoreSettings, 
+  Refund, 
+  DebtTransaction, 
+  Expense, 
+  VehicleLoadingManifest 
+} from '../types';
 
 const DB_NAME = 'KianCashier_OfflineDB';
 const DB_VERSION = 2;
@@ -30,12 +40,13 @@ export interface DeviceTransferPackage {
   senderDeviceName: string;
   createdAt: string;
   expiresAt: string;
-  transferType: 'all' | 'products' | 'customers' | 'sales' | 'settings';
+  transferType: 'all' | 'products' | 'customers' | 'sales' | 'documents' | 'settings' | string;
   summary: {
     productsCount: number;
     categoriesCount: number;
     customersCount: number;
     salesCount: number;
+    documentsCount?: number;
     hasSettings: boolean;
   };
   data: {
@@ -43,6 +54,10 @@ export interface DeviceTransferPackage {
     categories?: Category[];
     customers?: Customer[];
     sales?: Sale[];
+    refunds?: Refund[];
+    debtTransactions?: DebtTransaction[];
+    expenses?: Expense[];
+    vehicleManifests?: VehicleLoadingManifest[];
     settings?: Partial<StoreSettings>;
   };
   notes?: string;

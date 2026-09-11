@@ -397,6 +397,25 @@ export interface BatteryInfo {
 
 export type PrintPaperSize = '80mm' | '58mm' | '76mm' | 'a4' | 'label_50x30' | 'label_40x25' | 'label_60x40';
 
+export type ReceiptTemplateStyle = 'standard' | 'modern' | 'compact' | 'formal_tax' | 'restaurant_diner' | 'classic' | 'thermal_bold' | 'minimal';
+export type ReceiptDividerStyle = 'dashed' | 'solid' | 'double' | 'dotted';
+export type ReceiptFontFamily = 'cairo' | 'tajawal' | 'sans' | 'mono' | 'default';
+
+export interface SavedSyncPartner {
+  deviceId?: string;
+  deviceName: string;
+  pairingKey: string;
+  channelId?: string;
+  savedAt?: string;
+  autoSyncEnabled: boolean;
+  syncSales: boolean;
+  syncDocuments: boolean;
+  syncCatalog: boolean;
+  lastSyncedAt: string | null;
+  pairedAt?: string;
+  syncDirection?: 'bidirectional' | 'receive_only' | 'send_only';
+}
+
 export interface LabelAlignmentConfig {
   topMarginMm: number;
   bottomMarginMm: number;
@@ -498,6 +517,50 @@ export interface StoreSettings {
   debtInvoiceMessageTemplate?: string; // Custom credit sale invoice template
   debtPaymentReceiptTemplate?: string; // Custom payment receipt template
   debtOverdueMessageTemplate?: string; // Custom overdue reminder template
+  // Invoice / Receipt Template Customization (تخصيص شكل وقالب الفاتورة)
+  receiptTemplateStyle?: ReceiptTemplateStyle; // 'standard' | 'modern' | 'compact' | 'formal_tax' | 'restaurant_diner'
+  receiptDividerStyle?: ReceiptDividerStyle; // 'dashed' | 'solid' | 'double' | 'dotted'
+  receiptFontFamily?: ReceiptFontFamily; // 'cairo' | 'sans' | 'mono'
+  receiptHeaderTitle?: string; // e.g., 'فاتورة مبيعات ضريبية مبسطة'
+  receiptSubHeader?: string;
+  receiptCustomFooterText?: string;
+  receiptShowLogo?: boolean;
+  receiptShowStoreNameAr?: boolean;
+  receiptShowStoreNameEn?: boolean;
+  receiptShowTagline?: boolean;
+  receiptShowAddress?: boolean;
+  receiptShowPhone?: boolean;
+  receiptShowTaxNumber?: boolean;
+  receiptShowCommercialRecord?: boolean;
+  receiptShowCashier?: boolean;
+  receiptShowCustomer?: boolean;
+  receiptShowCustomerCode?: boolean;
+  receiptShowCustomerPhone?: boolean;
+  receiptShowOrderDiningType?: boolean;
+  receiptShowItemNotes?: boolean;
+  receiptShowItemSku?: boolean;
+  receiptShowItemUnit?: boolean;
+  receiptShowSubtotal?: boolean;
+  receiptShowDiscount?: boolean;
+  receiptShowTax?: boolean;
+  receiptShowPaymentMethod?: boolean;
+  receiptShowPaidAndChange?: boolean;
+  receiptShowExchangeRate?: boolean;
+  receiptShowPoints?: boolean;
+  receiptShow1DBarcode?: boolean;
+  receiptShowQRCode?: boolean;
+  receiptQrPosition?: 'bottom' | 'top' | 'hidden';
+  receiptShowReturnPolicy?: boolean;
+  receiptReturnPolicyText?: string;
+  receiptReturnPolicyDays?: number;
+  receiptShowCashierName?: boolean;
+  receiptShowCustomerInfo?: boolean;
+  receiptShowBarcode?: boolean;
+  receiptShowQrCode?: boolean;
+  receiptShowItemCount?: boolean;
+  // Saved Cross-Device Auto-Sync Partner
+  savedSyncPartner?: SavedSyncPartner;
+  autoSyncOnStartup?: boolean;
   whatsappApiKey?: string; // WhatsApp Business Cloud API / Gateway Key (optional for headless direct sending)
   whatsappPhoneId?: string; // WhatsApp Phone Number ID
   whatsappPhoneNumberId?: string; // WhatsApp Phone Number ID (alias)
